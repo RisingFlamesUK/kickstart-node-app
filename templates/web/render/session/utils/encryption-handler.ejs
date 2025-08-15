@@ -1,0 +1,7 @@
+//This file is /utils/encryption-handler.js
+import crypto from "crypto";
+
+// Generate secret 
+export default function generateSecret() {
+  return crypto.randomBytes(64).toString('hex');
+}
