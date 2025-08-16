@@ -1,4 +1,4 @@
-// Updated webgen.js with --passport strategy support
+// webgen.js
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -31,42 +31,95 @@ export default async function runWebGenerator(projectName, options) {
     options.passport = false;
   }
 
-  // Prompt for missing features
-  if (!options.pg && !options.session && !options.axios) {
+  // ---------------------------
+  // Hybrid Mode: Interactive prompts if no flags
+  // ---------------------------
+  const noFlags =
+    !options.pg &&
+    !options.session &&
+    !options.axios &&
+    !options.passport &&
+    !options.passportStrategies;
+
+  if (noFlags) {
     const answers = await inquirer.prompt([
-      { type: 'confirm', name: 'pg', message: chalk.yellow('Include PostgreSQL?'), default: false },
-      { type: 'confirm', name: 'session', message: chalk.yellow('Enable session management?'), default: false, when: (a) => a.pg },
-      { type: 'confirm', name: 'axios', message: chalk.yellow('Include Axios?'), default: false },
-      { type: 'confirm', name: 'passport', message: chalk.yellow('Use Passport.js authentication?'), default: false, when: (a) => a.pg && a.session },
+      {
+        type: 'list',
+        name: 'type',
+        message: 'What type of project?',
+        choices: ['web'], // future: ['web', 'api']
+        default: 'web',
+      },
+      { type: 'confirm', name: 'pg', message: 'Include PostgreSQL?', default: false },
+      {
+        type: 'confirm',
+        name: 'session',
+        message: 'Enable session management?',
+        default: false,
+        when: (a) => a.pg,
+      },
+      { type: 'confirm', name: 'axios', message: 'Include Axios?', default: false },
+      {
+        type: 'checkbox',
+        name: 'passportStrategies',
+        message: 'Select Passport strategies to include:',
+        choices: [
+          { name: 'local', value: 'local' },
+          { name: 'bearer', value: 'bearer' },
+          { name: 'google', value: 'google' },
+          { name: 'facebook', value: 'facebook' },
+          { name: 'twitter', value: 'twitter' },
+          { name: 'microsoft', value: 'microsoft' },
+          { name: 'linkedin', value: 'linkedin' },
+          { name: 'steam', value: 'steam' },
+          { name: 'amazon', value: 'amazon' },
+        ],
+        when: (a) => a.pg && a.session,
+      },
     ]);
     Object.assign(options, answers);
+  } else {
+    // If passportStrategies provided as CLI flag (--passportStrategies=google,facebook)
+    if (typeof options.passportStrategies === 'string') {
+      options.passportStrategies = options.passportStrategies.split(',').map((s) => s.trim());
+    }
   }
 
+  // Prompt for PG credentials if PG enabled and missing any field
   if (options.pg) {
     const missing = ['pgUser', 'pgPassword', 'pgDatabase', 'pgHost', 'pgPort'].filter((key) => !options[key]);
     if (missing.length > 0) {
-      const pgAnswers = await inquirer.prompt([
-        { type: 'input', name: 'pgUser', message: 'Postgres username:', default: 'postgres' },
-        { type: 'input', name: 'pgPassword', message: 'Postgres password:' },
-        { type: 'input', name: 'pgDatabase', message: 'Postgres database name:' },
-        { type: 'input', name: 'pgHost', message: 'Postgres host:', default: 'localhost' },
-        { type: 'input', name: 'pgPort', message: 'Postgres port:', default: '5432' },
+      const creds = await inquirer.prompt([
+        { type: 'input', name: 'pgUser', message: 'Postgres username:', default: 'postgres', when: () => !options.pgUser },
+        { type: 'input', name: 'pgPassword', message: 'Postgres password:', when: () => !options.pgPassword },
+        { type: 'input', name: 'pgDatabase', message: 'Postgres database name:', when: () => !options.pgDatabase },
+        { type: 'input', name: 'pgHost', message: 'Postgres host:', default: 'localhost', when: () => !options.pgHost },
+        { type: 'input', name: 'pgPort', message: 'Postgres port:', default: '5432', when: () => !options.pgPort },
       ]);
-      Object.assign(options, pgAnswers);
+      Object.assign(options, creds);
     }
   }
+
+  // At this point, options are fully populated (via flags or prompts)
 
   const dry = options.dryRun;
   const logStep = (msg) => console.log(chalk.gray(`⏳ ${msg}${dry ? ' [skipped]' : ''}`));
 
+  // ---------------------------
   // Static copies
-  const staticPaths = [ ['base/public', 'public'], ['base/views', 'views'] ];
+  // ---------------------------
+  const staticPaths = [
+    ['base/public', 'public'],
+    ['base/views', 'views'],
+  ];
   for (const [from, to] of staticPaths) {
     logStep(`Copying static ${from} → ${to}`);
     if (!dry) await fs.copy(path.join(__dirname, '../../templates/web/static', from), path.join(projectDir, to));
   }
 
+  // ---------------------------
   // Rendered templates
+  // ---------------------------
   const renderTemplate = async (srcRel, destRel, data = {}) => {
     const src = path.join(__dirname, '../../templates/web/render', srcRel);
     const dest = path.join(projectDir, destRel);
@@ -76,7 +129,12 @@ export default async function runWebGenerator(projectName, options) {
     }
   };
 
-  await renderTemplate('base/app.ejs', 'app.js', { usePg: options.pg, useSession: options.session });
+  await renderTemplate('base/app.ejs', 'app.js', {
+    usePg: options.pg,
+    useSession: options.session,
+    usePassport: options.passportStrategies?.length > 0,
+  });
+
   await renderTemplate('base/env.ejs', '.env', {
     port: options.port || '3000',
     pgUser: options.pgUser || '',
@@ -84,7 +142,8 @@ export default async function runWebGenerator(projectName, options) {
     pgDatabase: options.pgDatabase || '',
     pgHost: options.pgHost || '',
     pgPort: options.pgPort || '',
-    sessionSecret: 'replace-me-secret'
+    sessionSecret: 'replace-me-secret',
+    passportStrategies: options.passportStrategies || [],
   });
 
   if (options.pg) {
@@ -92,23 +151,42 @@ export default async function runWebGenerator(projectName, options) {
     await renderTemplate('pg/utils/database.ejs', 'utils/database.js', { useSession: options.session });
   }
 
-  if (options.session && !options.passport) {
+  if (options.session && (!options.passportStrategies || options.passportStrategies.length === 0)) {
     logStep('Rendering encryption-handler.js...');
     await renderTemplate('session/utils/encryption-handler.ejs', 'utils/encryption-handler.js');
   }
 
-  if (options.passport) {
-    logStep('Rendering Passport strategy...');
-    await renderTemplate('passport/utils/passport-local.ejs', 'utils/passport-local.js');
+  if (options.passportStrategies && options.passportStrategies.length > 0) {
+    logStep('Rendering Passport strategies...');
+    for (const strategy of options.passportStrategies) {
+      await renderTemplate(`passport/config/passport-${strategy}.ejs`, `config/passport-${strategy}.js`);
+    }
     await renderTemplate('passport/routes/auth.ejs', 'routes/auth.js');
+    await renderTemplate('passport/utils/ensure-auth.ejs', 'utils/ensure-auth.js');
+    if (options.passportStrategies.includes('bearer')) {
+      await renderTemplate('passport/utils/token-store.ejs', 'utils/token-store.js');
+    }
   }
 
+  // ---------------------------
   // Dependencies
+  // ---------------------------
   const deps = ['express', 'dotenv', 'ejs'];
   if (options.pg) deps.push('pg');
   if (options.session) deps.push('express-session', 'connect-pg-simple');
   if (options.axios) deps.push('axios');
-  if (options.passport) deps.push('passport', 'passport-local', 'bcrypt', 'express-flash');
+  if (options.passportStrategies?.length > 0) {
+    deps.push('passport', 'bcrypt', 'express-flash');
+    if (options.passportStrategies.includes('local')) deps.push('passport-local');
+    if (options.passportStrategies.includes('bearer')) deps.push('passport-http-bearer');
+    if (options.passportStrategies.includes('google')) deps.push('passport-google-oauth20');
+    if (options.passportStrategies.includes('facebook')) deps.push('passport-facebook');
+    if (options.passportStrategies.includes('twitter')) deps.push('passport-twitter');
+    if (options.passportStrategies.includes('microsoft')) deps.push('passport-microsoft');
+    if (options.passportStrategies.includes('linkedin')) deps.push('passport-linkedin-oauth2');
+    if (options.passportStrategies.includes('steam')) deps.push('passport-steam');
+    if (options.passportStrategies.includes('amazon')) deps.push('passport-amazon');
+  }
 
   if (!dry) {
     logStep('Initializing npm...');
