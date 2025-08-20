@@ -1,13 +1,12 @@
 # 🛠️ Kickstart Node App — Developer Setup
 
-This document helps contributors set up the local development environment for `kickstart-node-app`, a modular CLI to scaffold Node.js web and API projects.
-Note that with version 1.0.0, only web application is supported.
+This guide explains how to set up a local development environment for contributing to **kickstart-node-app**.
 
 ---
 
 ## ✅ Prerequisites
 
-Make sure you have the following installed:
+Make sure you have these tools installed:
 
 | Tool    | Version                  | Install Link                                           |
 | ------- | ------------------------ | ------------------------------------------------------ |
@@ -18,123 +17,98 @@ Make sure you have the following installed:
 
 ---
 
-## 🚀 Getting Started
+## 📦 Install Locally
 
-1. **Clone the repository**:
+Clone the repo and link it for local testing:
 
 ```bash
-git clone https://github.com/RisingFlamesUK/kickstart-node-app.git
+git clone https://github.com/yourname/kickstart-node-app.git
 cd kickstart-node-app
-```
-
-2. **Install dependencies**:
-
-```bash
 npm install
+npm link   # makes the CLI available globally
 ```
 
-3. **Link the CLI tool globally**:
-
-Use `npm link` to simulate global `npx` usage locally:
+Now you can run:
 
 ```bash
-npm link
-```
-
-Now you can run the CLI anywhere on your system:
-
-```bash
-kickstart-node my-app --pg --session --axios --dry-run --verbose
+kickstart-node-app --help
 ```
 
 ---
 
-## 🔭 Project Structure
+## 🧱 Project Structure
 
-```bash
-kickstart-node-app/
+```
+kickstart-node-app
 ├── bin/
-│   └── index.js               # CLI entry point
+│   └── index.js                # CLI entry point
 ├── generators/
-│   ├── api/
-│   │   └── index.js           # API project scaffolder
 │   └── web/
-│       ├── index.js           # Web project scaffolder
-│       └── webgen.js          # Logic for generating web projects
+│       ├── lib/
+│       │   └── next-steps.js   # generates NEXT_STEPS.md guidance
+│       └── webgen.js           # main generator logic
 ├── templates/
-│   ├── api/
-│   │   ├── render/
-│   │   │   └── base/
-│   │   └── static/
-│   │       └── base/
 │   └── web/
-│       ├── static/            # Copied directly into project
-│       │   ├── base/
-│       │   │   ├── public/
-│       │   │   └── views/
-│       └── render/            # EJS-rendered templates
-│           ├── base/
-│           │   ├── app.ejs
-│           │   └── env.ejs
-│           ├── pg/
-│           │   └── utils/
-│           │       └── database.ejs
-│           └── session/
-│               └── utils/
-│                   └── encryption-handler.ejs
+│       ├── render/             # EJS-rendered templates
+│       │   ├── base/           # core app + env templates
+│       │   ├── passport/       # auth-related config/routes/views
+│       │   ├── pg/             # PostgreSQL config
+│       │   └── session/        # session-only utilities
+│       └── static/             # static files copied as-is
+│           └── base/           # base public assets + views
+├── dev-setup.md
+├── README.md
 ├── package.json
-├── package-lock.json
-├── dev-setup.md               # Root development setup guide
-└── README.md
+└── .gitignore
 ```
 
----
-
-## 🧪 Recommended Tools
-
-- `nodemon` — for rapid development (auto-detected by scaffolder)
-- `eslint` — for code linting
-- `prettier` — for formatting
-- `vitest` or `jest` — for future testing
+* `render/` contains EJS templates processed at generation time.
+* `static/` contains base assets (CSS, JS, views) copied directly.
+* Passport strategies live under `render/passport/config/`.
+* New strategies or utilities should update `webgen.js` and `next-steps.js`.
 
 ---
 
-## 🔧 Scripts (optional)
+## 🔄 Development Workflow
 
-If using any scripts, define them in `package.json`:
+1. Make changes in `kickstart-node-app`
+2. Re-link (`npm link`) if needed
+3. Generate a new test project:
 
-```json
-"scripts": {
-  "start": "node ./bin/index.js",
-  "dev": "nodemon ./bin/index.js",
-  "lint": "eslint .",
-  "format": "prettier --write ."
-}
-```
+   ```bash
+   kickstart-node-app web my-app --pg --session --passport local,google
+   ```
+4. Run and validate the generated app
+5. Commit and push to a feature branch
 
 ---
 
-## 🧼 Unlink the CLI (optional)
+## 🤪 Testing
 
-To remove the global link when finished:
+For automated checks of generated projects, use the **kickstart-node-app-testbed** repo.
+You can clone it and link it to your local CLI, but it is kept separate from this project.
+
+---
+
+## 🧹 Cleanup
+
+To remove the global link:
 
 ```bash
-npm unlink --global
+npm unlink -g kickstart-node-app
+```
+
+To remove the symlink from a project:
+
+```bash
+npm unlink kickstart-node-app
 ```
 
 ---
 
-## 🤝 Contributing
+## 📬 Notes for Contributors
 
-1. Branch from `main`
-2. Follow consistent naming (e.g. `feat/web-scaffold`, `fix/install-error`)
-3. Test your changes before pushing
-4. Open a Pull Request (PR) with a clear description
-
----
-
-## 📬 Questions?
-
-Open an issue or contact the maintainer.
-
-## Happy building! 🚀
+* New templates → `templates/web/render` or `templates/web/static`
+* Passport strategies → update `webgen.js` and `next-steps.js`
+* Keep output clean and consistent
+* PRs welcome 🚀

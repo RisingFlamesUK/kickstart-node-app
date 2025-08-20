@@ -1,23 +1,96 @@
-// routes/auth.js
+<%_ /* templates/web/render/passport/routes/auth.ejs */ _%>
 import express from 'express';
 import passport from 'passport';
 
+<% if (passportStrategies?.includes('local')) { %>
+import { createUser, findUserByEmail } from '../config/user-store.js';
+import bcrypt from 'bcrypt';
+<% } %>
+
 const router = express.Router();
 
+/* ---------- Helpers ---------- */
+function ensureLoggedIn(req, res, next) {
+  if (req.isAuthenticated?.()) return next();
+  res.redirect('/login');
+}
+
+/* ---------- Login ---------- */
 router.get('/login', (req, res) => {
-    res.render('login');
+  res.render('login', {
+    title: 'Login',
+    passportStrategies: <%- JSON.stringify(passportStrategies || []) %>,
+    flash: req.flash ? req.flash() : {}
+  });
 });
 
-router.post('/login', passport.authenticate('local', {
+<% if (passportStrategies?.includes('local')) { %>
+router.post(
+  '/login',
+  passport.authenticate('local', {
     successRedirect: '/',
     failureRedirect: '/login',
     failureFlash: true
-}));
+  })
+);
+<% } %>
 
-router.get('/logout', (req, res) => {
-    req.logout(() => {
-        res.redirect('/');
-    });
+/* ---------- Logout ---------- */
+router.get('/logout', (req, res, next) => {
+  // Passport v0.6 requires callback
+  req.logout?.(err => {
+    if (err) return next(err);
+    res.redirect('/');
+  });
 });
+
+/* ---------- Local: Register ---------- */
+<% if (passportStrategies?.includes('local')) { %>
+router.get('/register', (req, res) => {
+  res.render('register', {
+    title: 'Create account',
+    flash: req.flash ? req.flash() : {}
+  });
+});
+
+router.post('/register', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    if (req.flash) req.flash('error', 'Email and password are required.');
+    return res.redirect('/register');
+  }
+  try {
+    const existing = await findUserByEmail(email);
+    if (existing) {
+      if (req.flash) req.flash('error', 'An account with that email already exists.');
+      return res.redirect('/register');
+    }
+    await createUser({ email, password });
+    if (req.flash) req.flash('info', 'Account created. Please sign in.');
+    res.redirect('/login');
+  } catch (e) {
+    if (req.flash) req.flash('error', e?.message || 'Registration failed.');
+    else console.error('[register] error:', e);
+    res.redirect('/register');
+  }
+});
+<% } %>
+
+/* ---------- OAuth routes (generated only for selected strategies) ---------- */
+<% if (passportStrategies?.includes('google')) { %>
+// Google OAuth 2.0
+router.get('/auth/google', passport.authenticate('google', { scope: ['email', 'profile'] }));
+
+router.get(
+  '/auth/google/callback',
+  passport.authenticate('google', {
+    failureRedirect: '/login',
+    failureFlash: true
+  }),
+  (req, res) => res.redirect('/')
+);
+<% } %>
+
+<% /* Add other providers here when you implement them */ %>
 
 export default router;

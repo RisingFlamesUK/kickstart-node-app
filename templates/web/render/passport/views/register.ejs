@@ -1,0 +1,35 @@
+<%_ /* templates/web/render/passport/views/register.ejs */ _%>
+<%%- include('partials/header', { title: 'Register' }) %%>
+
+<div class="container" style="max-width: 560px; margin: 2rem auto;">
+  <h1>Create an account</h1>
+
+  <%% if (flash && flash.error && flash.error.length) { %%>
+    <div style="color:#a00; margin:.75rem 0;"><%%= flash.error.join('<br>') %%></div>
+  <%% } %%>
+  <%% if (flash && flash.info && flash.info.length) { %%>
+    <div style="color:#0366d6; margin:.75rem 0;"><%%= flash.info.join('<br>') %%></div>
+  <%% } %%>
+
+  <form action="/register" method="post" style="display: grid; gap: .75rem;">
+    <label>
+      <div>Email</div>
+      <input type="email" name="email" required style="width:100%;padding:.5rem" />
+    </label>
+    <label>
+      <div>Password</div>
+      <input type="password" name="password" required style="width:100%;padding:.5rem" />
+    </label>
+    <label>
+      <div>Confirm Password</div>
+      <input type="password" name="confirmPassword" required style="width:100%;padding:.5rem" />
+    </label>
+    <button type="submit" style="padding:.6rem 1rem; cursor: pointer;">Register</button>
+  </form>
+
+  <p style="margin-top:1rem;">
+    Already have an account? <a href="/login">Sign in</a>
+  </p>
+</div>
+
+<%%- include('partials/footer') %%>

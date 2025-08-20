@@ -1,0 +1,108 @@
+<%_ /* templates/web/render/passport/config/user-store.ejs */ _%>
+// config/user-store.js
+import { database } from './database.js';
+import bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
+
+const USERS_TABLE = 'users';
+
+// Ensure table exists
+export async function initUserStore() {
+  await database.query(`
+    CREATE TABLE IF NOT EXISTS ${USERS_TABLE} (
+      id UUID PRIMARY KEY,
+      email TEXT UNIQUE,
+      password_hash TEXT,
+      provider TEXT,
+      provider_id TEXT,
+      display_name TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // Optional: index for provider logins
+  await database.query(`
+    CREATE INDEX IF NOT EXISTS idx_${USERS_TABLE}_provider
+      ON ${USERS_TABLE}(provider, provider_id)
+  `);
+}
+
+// Create a new local user
+export async function createUser({ email, password }) {
+  const id = randomUUID();
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  await database.query(
+    `INSERT INTO ${USERS_TABLE} (id, email, password_hash, provider, display_name)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, email, passwordHash, 'local', email]
+  );
+
+  return { id, email };
+}
+
+// Find user by email
+export async function findUserByEmail(email) {
+  const { rows } = await database.query(
+    `SELECT * FROM ${USERS_TABLE} WHERE email=$1`,
+    [email]
+  );
+  return rows[0] || null;
+}
+
+// Find user by id (primary key)
+export async function findUserById(id) {
+  const { rows } = await database.query(
+    `SELECT * FROM ${USERS_TABLE} WHERE id=$1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+// Create or find user for OAuth (google, linkedin, etc.)
+export async function findOrCreateOAuthUser({ provider, profile }) {
+  // Most providers give email + provider-specific id
+  const email = profile.emails?.[0]?.value || null;
+  const providerId = profile.id;
+
+  // Try by provider + provider_id first
+  let { rows } = await database.query(
+    `SELECT * FROM ${USERS_TABLE} WHERE provider=$1 AND provider_id=$2`,
+    [provider, providerId]
+  );
+  if (rows[0]) return rows[0];
+
+  // If we have email, try to link to an existing local account
+  if (email) {
+    ({ rows } = await database.query(
+      `SELECT * FROM ${USERS_TABLE} WHERE email=$1`,
+      [email]
+    ));
+    if (rows[0]) {
+      // Link existing user to this provider
+      const user = rows[0];
+      await database.query(
+        `UPDATE ${USERS_TABLE} SET provider=$1, provider_id=$2 WHERE id=$3`,
+        [provider, providerId, user.id]
+      );
+      return { ...user, provider, provider_id: providerId };
+    }
+  }
+
+  // Create new user
+  const newUser = {
+    id: randomUUID(),
+    email,
+    provider,
+    provider_id: providerId,
+    display_name: profile.displayName || email || '',
+  };
+
+  await database.query(
+    `INSERT INTO ${USERS_TABLE} (id, email, provider, provider_id, display_name)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [newUser.id, newUser.email, newUser.provider, newUser.provider_id, newUser.display_name]
+  );
+
+  return newUser;
+}

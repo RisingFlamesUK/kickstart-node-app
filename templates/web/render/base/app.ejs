@@ -1,47 +1,156 @@
-// This file is /app.js
+<%_ /* templates/web/render/base/app.ejs */ _%>
 import express from 'express';
 import dotenv from 'dotenv';
-<% if (usePg) { %>import { database<% if (useSession) { %>, PGStore<% } %> } from './utils/database.js';<% } %>
-<% if (useSession) { %>import session from 'express-session';
-import generateSecret from './utils/encryption-handler.js';<% } %>
+<% if (usePg) { %>import { database<% if (useSession) { %>, PGStore<% } %> } from './config/database.js';<% } %>
+<% if (usePg && usePassport) { %>import { initUserStore } from './config/user-store.js';<% } %>
+<% if (useSession) { %>import session from 'express-session';<% } %>
+<% if (useSession && !usePassport) { %>import generateSecret from './utils/encryption-handler.js';<% } %>
+<% if (usePassport) { %>import passport from 'passport';
+<% } %>
+
+<% if (usePassport) { %>import crypto from 'crypto';<% } %>
+<% if (usePassport) { %>
+// Strategy initializers (only import the ones you selected)
+<% if (passportStrategies && passportStrategies.includes('local')) { %>
+const configureLocal = (await import('./config/passport-local.js')).default;
+<% } %>
+<% if (passportStrategies && passportStrategies.includes('google')) { %>
+const configureGoogle = (await import('./config/passport-google-oauth20.js')).default;
+<% } %>
+<% /* Add other strategies as needed... */ %>
+<% } %>
 
 dotenv.config();
 
 const app = express();
-
 const PORT = process.env.PORT || 3000;
 
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static('public'));
+app.set('view engine', 'ejs');
+<%_ /* Seed safe view locals for all templates */ _%>
+app.use((req, res, next) => {
+  // whether auth was scaffolded in this project
+  res.locals.authEnabled = <%= usePassport ? 'true' : 'false' %>;
+  // which passport strategies were scaffolded (used at runtime by EJS)
+  res.locals.passportStrategies = <%- JSON.stringify(passportStrategies || []) %>;
+  // currently logged-in user (Passport sets req.user if authenticated)
+  res.locals.currentUser = req.user || null;
+
+  // make connect-flash messages available to views (if flash middleware is present)
+  res.locals.flash = typeof req.flash === 'function' ? req.flash() : {};
+  next();
+});
+
 <% if (useSession) { %>
-const sessionSecret = process.env.SESSION_SECRET || generateSecret();
+// ---- Session store ----
+const sessionSecret =
+  process.env.SESSION_SECRET
+  <% if (usePassport) { %>|| crypto.randomBytes(24).toString('hex')<% } else { %>|| generateSecret()<% } %>;
 
 app.use(
   session({
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
-    store: new PGStore({ pool: database }),
-    cookie: {
-      secure: false,
-      path: '/',
-      httpOnly: true,
-    }
+    <% if (usePg) { %>
+    store: new PGStore({
+      pool: database,
+      tableName: 'session',
+      createTableIfMissing: true,
+    }),
+    <% } %>
+    cookie: { secure: false, path: '/', httpOnly: true }
   })
 );
+
+function flashShim(req, res, next) {
+  if (!req.session) return next();
+
+  // Store flash messages in the session under _flash
+  if (typeof req.flash !== 'function') {
+    req.flash = function (type, msg) {
+      req.session._flash = req.session._flash || {};
+      // Setter: req.flash('error', 'Bad credentials')
+      if (type && typeof msg === 'string') {
+        (req.session._flash[type] ||= []).push(msg);
+        return;
+      }
+      // Getter: req.flash('error') -> array
+      if (type) {
+        const arr = (req.session._flash?.[type]) || [];
+        delete req.session._flash?.[type];
+        return arr;
+      }
+      // Getter (no type): drain all and return object
+      const all = req.session._flash || {};
+      req.session._flash = {};
+      return all;
+    };
+  }
+
+  // Make flash available to views as an object (drains on read)
+  res.locals.flash = function () {
+    if (!req.session) return {};
+    const all = req.session._flash || {};
+    req.session._flash = {};
+    return all;
+  };
+
+  next();
+}
+
+app.use(flashShim);
 <% } %>
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-app.use(express.static('public'));
-app.set('view engine', 'ejs');
+<% if (usePg && usePassport) { %>await initUserStore();<% } %>
+
+<% if (usePassport) { %>
+// ---- Passport bootstrapping ----
+
+app.use(passport.initialize());
+<% if (useSession) { %>app.use(passport.session());<% } %>
+
+// Minimal (de)serialization for demo purposes.
+// Replace with your user lookup/persistence logic.
+passport.serializeUser((user, done) => {
+  done(null, user);
+});
+passport.deserializeUser((obj, done) => {
+  done(null, obj);
+});
+
+// Configure only the strategies you selected
+<% if (passportStrategies && passportStrategies.includes('local')) { %>configureLocal();<% } %>
+<% if (passportStrategies && passportStrategies.includes('google')) { %>configureGoogle();<% } %>
+
+// Auth routes (generated dynamically for selected strategies)
+const authRoutes = (await import('./routes/auth.js')).default;
+app.use(authRoutes);
+
+// Expose auth state to views (only when Passport is enabled)
+app.use((req, res, next) => {
+  // whether auth was scaffolded in this project
+  res.locals.authEnabled = true;
+  // which passport strategies were scaffolded (used at runtime by EJS)
+  res.locals.passportStrategies = <%- JSON.stringify(passportStrategies || []) %>;
+  // currently logged-in user (Passport sets req.user if authenticated)
+  res.locals.currentUser = req.user || null;
+
+  // expose flash messages collected by express-flash
+  // NOTE: we only *read* locals; routes may still call req.flash() to set messages.
+  res.locals.flash = res.locals.flash || res.locals.messages || {};
+  next();
+});
+<% } %>
 
 app.get('/', (req, res) => {
   res.render('index.ejs', { title: 'Welcome' });
 });
-
 
 app.listen(PORT, () => {
   console.log("------------------------------------------------------");
   console.log(`|   🚀 Server running on http://localhost:${PORT}    |`);
   console.log("------------------------------------------------------");
 });
-

@@ -1,3 +1,4 @@
+<%_ /* templates/web/render/pg/config/database.ejs */ _%>
 // This file is /utils/database.js
 import pg from 'pg';
 import dotenv from 'dotenv';
@@ -20,5 +21,7 @@ database.on('error', (err, client) => {
 });
 
 <% if (useSession) { %>const PGStore = connectPgSimple(session);
-export { database, PGStore };<% } 
+export { database, PGStore };
+export default database;<% } 
+
 else { %>export { database };<% } %>

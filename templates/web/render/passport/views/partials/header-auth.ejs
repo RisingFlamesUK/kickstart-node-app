@@ -1,0 +1,38 @@
+<%- // this file is templates/render/passport/views/partials/header-auth.ejs %>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>
+    <%%= title %>
+  </title>
+</head>
+
+<body>
+
+  <header class="site-header" style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;border-bottom:1px solid #eee;">
+    <a href="/" class="brand" style="text-decoration:none;color:inherit;display:flex;gap:.5rem;align-items:center;">
+      <span aria-hidden="true" style="display:inline-block;width:28px;height:28px;border-radius:50%;border:2px solid #000;"></span>
+      <strong>Kickstart Node</strong>
+    </a>
+
+    <nav style="display:flex;gap:.75rem;align-items:center;">
+      <%% if (authEnabled) { %>
+        <%% if (currentUser) { %>
+          <div style="display:flex;align-items:center;gap:.5rem;">
+            <span title="Signed in as" style="font-size:.95rem;">
+              <%%= currentUser.displayName || currentUser.email || 'Account' %>
+            </span>
+            <a href="/logout" class="btn" style="padding:.4rem .75rem;border:1px solid #ddd;border-radius:6px;text-decoration:none;">Logout</a>
+          </div>
+        <%% } else { %>
+          <a href="/login" class="btn" style="padding:.4rem .75rem;border:1px solid #ddd;border-radius:6px;text-decoration:none;">Log in</a>
+          <%% if (Array.isArray(passportStrategies) && passportStrategies.includes('local')) { %>
+            <a href="/register" class="btn" style="padding:.4rem .75rem;border:1px solid #ddd;border-radius:6px;text-decoration:none;">Sign up</a>
+          <%% } %>
+        <%% } %>
+      <%% } %>
+    </nav>
+  </header>

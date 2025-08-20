@@ -1,2 +1,31 @@
-// utils/passport-google-oauth20.js
-// TODO: Implement Google-oauth20 authentication
+// config/passport-google-oauth20.js
+import passport from 'passport';
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import { findOrCreateOAuthUser } from './user-store.js';
+
+export default function configureGoogleStrategy() {
+  const { GOOGLE_CLIENT_ID = '', GOOGLE_CLIENT_SECRET = '', GOOGLE_CALLBACK_URL } = process.env;
+
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    console.warn('[auth] Google OAuth not configured. Skipping.');
+    return;
+  }
+
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: GOOGLE_CLIENT_ID,
+        clientSecret: GOOGLE_CLIENT_SECRET,
+        callbackURL: GOOGLE_CALLBACK_URL || 'http://localhost:3000/auth/google/callback',
+      },
+      async (accessToken, refreshToken, profile, done) => {
+        try {
+          const user = await findOrCreateOAuthUser({ provider: 'google', profile });
+          return done(null, user);
+        } catch (err) {
+          return done(err);
+        }
+      }
+    )
+  );
+}

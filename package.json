@@ -1,28 +1,44 @@
 {
   "name": "kickstart-node-app",
   "version": "1.0.0",
-  "description": "",
-  "bin": {
-    "kickstart-node": "./bin/index.js"
-  },
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [
-    "cli",
-  "scaffold",
-  "generator",
-  "starter",
-  "node",
-  "express",
-  "postgresql",
-  "ejs",
-  "project"
-  ],
-  "author": "James Peck (RisingFlamesUK)",
+  "description": "CLI to scaffold modern Node.js web apps with Express, EJS, Postgres, sessions, and Passport.",
+  "author": "James Peck",
   "license": "MIT",
+
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RisingFlamesUK/kickstart-node-app"
+  },
+  "bugs": {
+    "url": "https://github.com/RisingFlamesUK/kickstart-node-app/issues"
+  },
+  "homepage": "https://github.com/RisingFlamesUK/kickstart-node-app#readme",
+
+  "bin": {
+    "kickstart-node-app": "bin/index.js"
+  },
+
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+
+  "keywords": [
+    "scaffold",
+    "generator",
+    "cli",
+    "express",
+    "node",
+    "ejs",
+    "postgres",
+    "passport"
+  ],
+
+  "preferGlobal": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  
   "dependencies": {
     "chalk": "^5.4.1",
     "commander": "^14.0.0",
@@ -30,5 +46,13 @@
     "execa": "^9.6.0",
     "fs-extra": "^11.3.0",
     "inquirer": "^12.7.0"
-  }
+  },
+  
+  "files": [
+    "bin/",
+    "generators/",
+    "templates/",
+    "README.md",
+    "LICENSE"
+  ]
 }
