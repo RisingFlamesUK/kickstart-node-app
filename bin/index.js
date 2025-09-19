@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import pkg from '../package.json' assert { type: 'json' };
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json'); 
 import chalk from 'chalk';
 import runWebGenerator from '../generators/web/webgen.js';
 

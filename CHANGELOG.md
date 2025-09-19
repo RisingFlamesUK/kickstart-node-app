@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.2] - 2025-09-19
+### Fixed
+- CLI now runs on Node 24+ by replacing `import … assert { type: 'json' }` with `createRequire` when loading `package.json`.
+
 ## [1.1.1] - 2025-09-19
 ### Fixed
 - `kickstart-node-app --version` now reports the correct version from `package.json`.
