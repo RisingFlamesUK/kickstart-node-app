@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.1] - 2025-09-19
+### Fixed
+- `kickstart-node-app --version` now reports the correct version from `package.json`.
+
 ## [1.1.0] - 2025-09-19
 ### Added
 - **Microsoft OAuth 2.0** strategy (`passport-microsoft-oauth20.ejs`) with config, generator wiring, and provider doc.

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import pkg from '../package.json' assert { type: 'json' };
 import chalk from 'chalk';
 import runWebGenerator from '../generators/web/webgen.js';
 
@@ -9,7 +10,7 @@ const program = new Command();
 program
   .name('kickstart-node-app')
   .description('🔧 Scaffold a new Node.js project (web or API)')
-  .version('0.1.0')
+  .version(pkg.version)
   .showHelpAfterError(true);
 
 // --- Top-level help enrichment ---

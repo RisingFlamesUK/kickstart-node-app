@@ -1,0 +1,2 @@
+# ensure CLI entry is POSIX-friendly
+bin/index.js text eol=lf
