@@ -1,0 +1,36 @@
+<%_ /* templates/web/render/session/docs/sessions.md.ejs */ _%>
+# Sessions — Quick Guide
+
+This project uses `express-session`. If PostgreSQL is enabled, sessions persist via `connect-pg-simple`.
+
+---
+
+## How it works
+
+* `app.js` wires `express-session` before `passport.initialize()` and `passport.session()`.
+* The store uses the `database` pool from `config/database.js`.
+* A **dev guard** middleware fails fast if `req.session` is missing.
+
+---
+
+## Environment
+
+```ini
+# SESSION_SECRET=   # set a strong value in production
+```
+
+If unset in dev, the app may generate a random secret.
+
+---
+
+## Security
+
+* Use HTTPS in production; set `cookie.secure=true`.
+* Set `cookie.sameSite` appropriately (e.g., `lax`).
+* Add rate limiting to auth routes.
+
+---
+
+## Debugging
+
+* If login seems to "not stick", check that the session middleware runs **before** Passport, and that your DB creds are valid.

@@ -1,7 +1,7 @@
 <%_ /* templates/web/render/passport/config/user-store.ejs */ _%>
-// config/user-store.js
+// This file is /config/user-store.js
 import { database } from './database.js';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '../utils/security.js';
 import { randomUUID } from 'crypto';
 
 const USERS_TABLE = 'users';
@@ -20,7 +20,6 @@ export async function initUserStore() {
     )
   `);
 
-  // Optional: index for provider logins
   await database.query(`
     CREATE INDEX IF NOT EXISTS idx_${USERS_TABLE}_provider
       ON ${USERS_TABLE}(provider, provider_id)
@@ -30,7 +29,7 @@ export async function initUserStore() {
 // Create a new local user
 export async function createUser({ email, password }) {
   const id = randomUUID();
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await hashPassword(password);
 
   await database.query(
     `INSERT INTO ${USERS_TABLE} (id, email, password_hash, provider, display_name)
@@ -59,11 +58,16 @@ export async function findUserById(id) {
   return rows[0] || null;
 }
 
-// Create or find user for OAuth (google, linkedin, etc.)
+// Create or find user for OAuth (google, microsoft, etc.)
+// Expects { provider, profile }
 export async function findOrCreateOAuthUser({ provider, profile }) {
-  // Most providers give email + provider-specific id
-  const email = profile.emails?.[0]?.value || null;
-  const providerId = profile.id;
+  const email =
+    profile?.emails?.[0]?.value ??
+    profile?._json?.mail ??
+    profile?._json?.userPrincipalName ??
+    null;
+
+  const providerId = profile?.id;
 
   // Try by provider + provider_id first
   let { rows } = await database.query(
@@ -79,7 +83,6 @@ export async function findOrCreateOAuthUser({ provider, profile }) {
       [email]
     ));
     if (rows[0]) {
-      // Link existing user to this provider
       const user = rows[0];
       await database.query(
         `UPDATE ${USERS_TABLE} SET provider=$1, provider_id=$2 WHERE id=$3`,
@@ -95,7 +98,11 @@ export async function findOrCreateOAuthUser({ provider, profile }) {
     email,
     provider,
     provider_id: providerId,
-    display_name: profile.displayName || email || '',
+    display_name:
+      profile?.displayName ||
+      [profile?.name?.givenName, profile?.name?.familyName].filter(Boolean).join(' ') ||
+      email ||
+      '',
   };
 
   await database.query(

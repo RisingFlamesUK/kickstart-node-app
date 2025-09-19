@@ -1,6 +1,6 @@
 {
   "name": "kickstart-node-app",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "CLI to scaffold modern Node.js web apps with Express, EJS, Postgres, sessions, and Passport.",
   "author": "James Peck",
   "license": "MIT",
@@ -43,11 +43,11 @@
   },
   "files": [
     "bin/",
+    "docs/",
     "generators/",
     "templates/",
-    "README.md",
     "CHANGELOG.md",
-    "dev-setup.md",
-    "LICENSE"
+    "LICENSE",
+    "README.md"   
   ]
 }

@@ -1,0 +1,81 @@
+<%_ /* templates/web/render/base/utils/validate-env.ejs */ _%>
+// This file is /utils/validate-env.js
+// Fails fast with clear messages for missing env vars based on the scaffolded features.
+
+const USE_PG = <%= usePg ? 'true' : 'false' %>;
+const STRATEGIES = <%- JSON.stringify(passportStrategies || []) %>;
+const PORT = <%- JSON.stringify(port || '3000') %>;
+
+function isBlank(v) {
+  return v === undefined || v === null || String(v).trim() === '';
+}
+
+export default function validateEnv() {
+  const missing = [];
+  const warnings = [];
+  const isNumeric = (v) => !isBlank(v) && !Number.isNaN(Number(v));
+
+  if (USE_PG) {
+  const required = ['PG_USER', 'PG_DB', 'PG_HOST', 'PG_PORT'];
+  const miss = required.filter((k) => isBlank(process.env[k]));
+  if (miss.length) missing.push({ group: 'PostgreSQL', vars: miss });
+
+  if (!isBlank(process.env.PG_PORT) && !isNumeric(process.env.PG_PORT)) {
+    missing.push({ group: 'PostgreSQL', vars: ['PG_PORT (must be a number)'] });
+  }
+
+  if (isBlank(process.env.PG_PASS)) {
+    warnings.push('PG_PASS is empty. If your server enforces password auth, set it in .env.');
+  }
+}
+
+  if (STRATEGIES.includes('google')) {
+    const req = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'];
+    const miss = req.filter((k) => isBlank(process.env[k]));
+    if (miss.length) missing.push({ group: 'Google OAuth', vars: miss });
+
+    if (isBlank(process.env.GOOGLE_CALLBACK_URL)) {
+      warnings.push(
+        `GOOGLE_CALLBACK_URL not set; assuming http://localhost:${PORT}/auth/google/callback`
+      );
+    }
+  }
+
+  if (STRATEGIES.includes('microsoft')) {
+    const req = ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET'];
+    const miss = req.filter((k) => isBlank(process.env[k]));
+    if (miss.length) missing.push({ group: 'Microsoft OAuth', vars: miss });
+
+    if (isBlank(process.env.MICROSOFT_TENANT)) {
+      warnings.push('MICROSOFT_TENANT not set; defaulting to "common".');
+      process.env.MICROSOFT_TENANT = 'common';
+    }
+    if (isBlank(process.env.MICROSOFT_CALLBACK_URL)) {
+      warnings.push(
+        `MICROSOFT_CALLBACK_URL not set; assuming http://localhost:${PORT}/auth/microsoft/callback`
+      );
+    }
+  }
+
+  if (missing.length) {
+    // Show warnings first, so users can fix everything in one pass.
+    if (warnings.length) {
+      console.log('');
+      for (const w of warnings) console.warn('⚠️  ' + w);
+    }
+    
+    // Now show errors
+    console.error('\n❌ Missing required environment variables:\n');
+    for (const { group, vars } of missing) {
+      console.error(`- ${group}: ${vars.join(', ')}`);
+    }
+
+    console.error('\nEdit your .env and restart the dev server.\n');
+    process.exit(1);
+  }
+
+  if (warnings.length) {
+    console.log('');
+    for (const w of warnings) console.warn('⚠️  ' + w);
+  }
+}

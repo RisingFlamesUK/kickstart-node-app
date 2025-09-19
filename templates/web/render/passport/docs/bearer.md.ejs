@@ -1,0 +1,131 @@
+<%_ /* templates/web/render/passport/docs/bearer.md.ejs */ _%>
+# Bearer Tokens — Quick Guide
+
+This project was generated with **Bearer token** support for server-to-server access or SPA/mobile fetches. Tokens are random, and only a **SHA-256 hash** is stored in the DB.
+
+---
+
+## What is a bearer token?
+
+A random, unguessable string the client sends in `Authorization: Bearer <token>` when calling your API. The server verifies it and attaches a user to the request. No cookies/sessions required.
+
+**Good for:** SPAs/mobile apps, server-to-server jobs, CLIs.
+
+---
+
+## What's included
+
+* `utils/token-store.js` — `issueToken`, `verifyToken`, `revokeToken`, `pruneExpired` (creates `api_tokens` on first use).
+* `utils/ensure-scope.js` — tiny middleware to guard routes by scope.
+* `routes/api.js` — **demo protected route** `GET /api/me` (requires scope `read:me`).
+
+---
+
+## Environment
+
+Optional hardening. Update .env:
+
+```
+# TOKEN_HASH_PEPPER=
+```
+
+---
+
+## Tables
+
+* `api_tokens` — stores **hashes** of tokens, not the tokens themselves.
+* `users` — the account the token acts as (local or OAuth).
+
+```sql
+-- Created lazily by utils/token-store.js on first use
+CREATE TABLE IF NOT EXISTS api_tokens (
+  token_hash  TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  scopes      TEXT,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS api_tokens_expires_at_idx ON api_tokens(expires_at);
+-- Optional performance index (not created automatically):
+-- CREATE INDEX IF NOT EXISTS api_tokens_user_id_idx ON api_tokens(user_id);
+```
+
+---
+
+## Helper CLI
+
+We include a helper script to create users and mint tokens.
+
+```bash
+# Create a local user
+npm run user:create -- --email alice@example.com --password Secret123
+
+# Issue a token for an existing user (by email)
+npm run token:issue -- --email alice@example.com --scopes read:me --ttl 7200
+
+# Create the user (if missing) and issue a token
+npm run token:create -- --email bob@example.com --password P@ssw0rd --scopes read:me
+```
+
+---
+
+## Testing a protected route
+
+```bash
+# Call the demo protected endpoint (requires scope read:me)
+curl -H "Authorization: Bearer <token>" http://localhost:<%= port || '3000' %>/api/me
+```
+
+Expected response (shape may vary depending on your verify step):
+
+```json
+{ "id": "<user-id>", "scopes": ["read:me"] }
+```
+
+---
+
+## Scope-based protection
+
+Use `ensureScope()` to require scopes on routes:
+
+```js
+import passport from "passport";
+import { ensureScope } from "./utils/ensure-scope.js";
+
+app.get(
+  "/api/me",
+  passport.authenticate("bearer", { session: false }),
+  ensureScope("read:me"),
+  (req, res) => res.json({ id: req.user.id, scopes: req.user.scopes || [] })
+);
+```
+
+In this scaffold, the example lives in `routes/api.js` and is mounted automatically when Bearer is enabled.
+
+---
+
+## Revocation & cleanup
+
+```js
+import { revokeToken, pruneExpired } from "./utils/token-store.js";
+await revokeToken("<token>");
+await pruneExpired();
+```
+
+Tokens also expire automatically (default 30 days).
+
+---
+
+## Best practices
+
+* **Scopes**: use simple strings like `read:me`, check them in your routes with `ensureScope()`.
+* **TTL**: prefer short lifetimes for human tokens; rotate CI/integration tokens regularly.
+* **Never log tokens**: only the hash is stored; don't print the plaintext token in logs.
+* **HTTPS only**: always deploy behind TLS.
+* **Rate limit**: token issuance and auth endpoints.
+
+---
+
+## Local → Bearer exchange (optional)
+
+If you also enabled the **local** strategy, you can add an `/auth/token` endpoint to exchange email+password for a short-lived token. This is **not** scaffolded by default; see the comments in `docs/local-sessions.md` and `utils/token-store.js` for guidance.

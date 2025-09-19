@@ -1,0 +1,16 @@
+<%_ /* templates/web/render/session/middleware/session-check.ejs */ _%>
+// This file is /middleware/session-check.js
+export default function sessionCheck(req, res, next) {
+// Express-session attaches req.session when correctly initialized *before* this middleware
+if (!req.session) {
+    // Helpful in dev when middleware order or store init is wrong
+    const msg = [
+        'Session middleware is not active (req.session is undefined).',
+        'Ensure express-session is configured *before* routes, and that --session was enabled when scaffolding.',
+        'If using Postgres store, verify DB is reachable and PGStore table exists.'
+    ].join(' ');
+    res.status(500).send(msg);
+    return;
+}
+    next();
+}

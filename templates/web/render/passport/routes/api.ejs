@@ -1,0 +1,28 @@
+<%_ /* templates/web/render/passport/routes/api.ejs */ _%>
+// This file is /routes/api.js
+import express from "express";
+import passport from "passport";
+import { ensureScope } from "../utils/ensure-scope.js";
+
+const router = express.Router();
+
+/**
+ * Demo bearer-protected endpoint.
+ * Requires a token with scope "read:me".
+ *
+ * GET /api/me
+ * Authorization: Bearer <token>
+ */
+router.get(
+  "/api/me",
+  passport.authenticate("bearer", { session: false }),
+  ensureScope("read:me"),
+  (req, res) => {
+    res.json({
+      id: req.user?.id ?? "unknown",
+      scopes: req.user?.scopes ?? [],
+    });
+  }
+);
+
+export default router;

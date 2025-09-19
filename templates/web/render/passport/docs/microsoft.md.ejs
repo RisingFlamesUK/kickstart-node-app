@@ -1,0 +1,162 @@
+<%_ /* templates/web/render/passport/docs/microsoft.md.ejs */ _%>
+# Microsoft OAuth 2.0 — Quick Guide
+
+This project was generated with **Microsoft OAuth 2.0** support.
+
+---
+
+## Prerequisites
+
+* An Azure AD app registration in the **Azure Portal → Entra ID → App registrations**.
+
+---
+
+## Configure in Azure
+
+1. **New registration** → Name it (e.g., "MyApp Local").
+2. **Supported account types:** choose what you need:
+
+   * `common` (any Microsoft account), or `organizations` / `consumers` / your tenant GUID.
+3. **Redirect URI (Web):**
+
+   ```
+   http://localhost:<%= port || '3000' %>/auth/microsoft/callback
+   ```
+4. After creation: **Certificates & secrets → New client secret**. Copy the **Value** (not the ID!).
+
+Record these:
+
+* **Application (client) ID** → `MICROSOFT_CLIENT_ID`
+* **Client secret (Value)**    → `MICROSOFT_CLIENT_SECRET`
+* **Tenant** (`common`, `organizations`, `consumers`, or your GUID) → `MICROSOFT_TENANT`
+
+---
+
+## Environment variables
+
+```
+MICROSOFT_CLIENT_ID=        # Application (client) ID
+MICROSOFT_CLIENT_SECRET=    # Client secret Value
+MICROSOFT_TENANT=common     # GUID tenant or: common | organizations | consumers
+MICROSOFT_CALLBACK_URL=http://localhost:<%= port || '3000' %>/auth/microsoft/callback  # Must match Redirect URI (type: Web)
+```
+
+---
+
+## How it works
+
+* The **Microsoft** button sends you to the Microsoft identity platform for consent.
+* Microsoft redirects back to `/auth/microsoft/callback`.
+* The server exchanges the code for profile info, finds or creates a user, then starts a session.
+
+**Files involved:**
+
+* `config/passport-microsoft-oauth20.js`
+* `routes/auth.js`
+* `config/user-store.js`
+
+---
+
+## Using Microsoft Graph tokens (optional, opt-in)
+
+By default, we keep it **session-only** and do **not** store tokens. If you need Microsoft Graph access, choose one of the opt-in patterns below. In both cases, when you start using the tokens in the verify callback, **remove the leading `_`** from the parameters to indicate they're used.
+
+> ⚠️ If you need a **refresh token**, you **must include** the `offline_access` scope.
+
+### Opt-in A — Use `accessToken` during the request only (no storage)
+
+**In your strategy options (`config/passport-microsoft-oauth20.js`)**, add `passReqToCallback: true`, keep scopes to what you need (e.g., `User.Read`), and consume the access token **only inside** the verify callback. Don't persist it.
+
+```js
+// config/passport-microsoft-oauth20.js
+passport.use(new MicrosoftStrategy({
+  clientID: MICROSOFT_CLIENT_ID,
+  clientSecret: MICROSOFT_CLIENT_SECRET,
+  callbackURL: MICROSOFT_CALLBACK_URL,
+  tenant: MICROSOFT_TENANT || 'common',
+  scope: ['User.Read'],
+  passReqToCallback: true,
+},
+// We use accessToken here but not refreshToken
+async (req, accessToken, _refreshToken, profile, done) => {
+  try {
+    // Example: call Graph once, do not store tokens
+    // await fetch('https://graph.microsoft.com/v1.0/me', {
+    //   headers: { Authorization: `Bearer ${accessToken}` }
+    // });
+
+    const user = await findOrCreateOAuthUser({ provider: 'microsoft', profile });
+    return done(null, user);
+  } catch (err) {
+    return done(err);
+  }
+}));
+```
+
+**When to use:** you just need a one-off Graph call during login or want to avoid token storage altogether.
+
+---
+
+### Opt-in B — Long-lived Graph access (store refresh token)
+
+**In your strategy options (`config/passport-microsoft-oauth20.js`)**, request a refresh token with `offline_access`, and add `passReqToCallback: true`. Store the **refresh token** securely (encrypted) and exchange it for access tokens on demand.
+
+```js
+// config/passport-microsoft-oauth20.js
+passport.use(new MicrosoftStrategy({
+  clientID: MICROSOFT_CLIENT_ID,
+  clientSecret: MICROSOFT_CLIENT_SECRET,
+  callbackURL: MICROSOFT_CALLBACK_URL,
+  tenant: MICROSOFT_TENANT || 'common',
+  scope: ['User.Read', 'offline_access'],
+  passReqToCallback: true,
+},
+// We store refreshToken; accessToken isn't needed here
+async (req, _accessToken, refreshToken, profile, done) => {
+  try {
+    const user = await findOrCreateOAuthUser({ provider: 'microsoft', profile });
+
+    // 🔐 Persist refreshToken securely (encrypt at rest)
+    // await saveOAuthTokens({ userId: user.id, provider: 'microsoft', refreshToken });
+
+    return done(null, user);
+  } catch (err) {
+    return done(err);
+  }
+}));
+```
+
+To exchange refresh tokens for access tokens at runtime, add a small helper using your preferred library (e.g., `@azure/msal-node`) or a direct token endpoint call.
+
+**Security tips:**
+
+* Encrypt refresh tokens at rest and restrict access strictly.
+* Rotate credentials and support revocation.
+* Never log tokens.
+
+---
+
+## Test locally
+
+1. Start the app and visit:
+
+   ```
+   http://localhost:<%= port || '3000' %>/login
+   ```
+2. Click **Continue with Microsoft**.
+
+---
+
+## Common issues
+
+* **Invalid client / secret:** Re-copy the secret **Value**. It's shown once.
+* **Redirect URI mismatch:** Must match exactly.
+* **Tenant mismatch:** Ensure `MICROSOFT_TENANT` matches your registration (or `common`).
+* **No refresh token returned:** Add `offline_access` to `scope`.
+
+---
+
+## Security notes
+
+* Keep secrets out of version control.
+* Use HTTPS in production and set `cookie.secure=true` for sessions.

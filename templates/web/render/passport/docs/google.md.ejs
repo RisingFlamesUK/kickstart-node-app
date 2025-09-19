@@ -1,0 +1,170 @@
+<%_ /* templates/web/render/passport/docs/google.md.ejs */ _%>
+# Google OAuth 2.0 — Quick Guide
+
+This project was generated with **Google OAuth 2.0** support.
+
+---
+
+## Prerequisites
+
+* A Google Cloud project with OAuth consent screen configured (External or Internal).
+* Create an **OAuth Client ID** of type **Web application**.
+
+---
+
+## Configure in Google Cloud Console
+
+1. Go to **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
+2. **Application type:** Web application.
+3. **Authorized redirect URIs:**
+
+   ```
+   http://localhost:<%= port || '3000' %>/auth/google/callback
+   ```
+4. Save; copy the **Client ID** and **Client Secret**.
+
+> The redirect URI must match exactly. Update your `.env` if you change the port.
+
+---
+
+## Environment variables
+
+Add to `.env` (already scaffolded):
+
+```
+GOOGLE_CLIENT_ID=           # Your Google Client ID
+GOOGLE_CLIENT_SECRET=       # Your Google Client secret
+GOOGLE_CALLBACK_URL=http://localhost:<%= port || '3000' %>/auth/google/callback  # Must match Authorized redirect URI
+```
+
+---
+
+## How it works
+
+* The **Sign in with Google** button redirects to Google for profile/email consent.
+* Google redirects back to `/auth/google/callback` with an auth code.
+* The server exchanges the code for profile info, finds or creates a user, and starts a session.
+
+**Files involved:**
+
+* `config/passport-google-oauth20.js` — strategy setup
+* `routes/auth.js` — login entrypoint & callback route
+* `config/user-store.js` — `findOrCreateOAuthUser()`
+
+---
+
+## Using Google tokens (optional, opt-in)
+
+By default, we keep it **session-only** and do **not** store tokens. If you need Google API access, choose one of the opt-in patterns below. In both cases, when you start using tokens in the verify callback, **remove the leading `_`** from parameters you actually use.
+
+> ⚠️ To receive a **refresh token** from Google, your initial authorization must request it. In Passport this is done on the **route** with `accessType: 'offline'` and typically `prompt: 'consent'`.
+
+### Opt-in A — Use `accessToken` during the request only (no storage)
+
+**In your strategy options (`config/passport-google-oauth20.js`)**, add `passReqToCallback: true`, keep minimal scopes (e.g., `profile` and `email`), and consume the access token **only inside** the verify callback. Don't persist it.
+
+```js
+// config/passport-google-oauth20.js
+passport.use(new GoogleStrategy({
+  clientID: GOOGLE_CLIENT_ID,
+  clientSecret: GOOGLE_CLIENT_SECRET,
+  callbackURL: GOOGLE_CALLBACK_URL,
+  scope: ['profile', 'email'],
+  passReqToCallback: true,
+},
+// We use accessToken here but not refreshToken
+async (req, accessToken, _refreshToken, profile, done) => {
+  try {
+    // Example: call a Google API once, do not store tokens
+    // await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    //   headers: { Authorization: `Bearer ${accessToken}` }
+    // });
+
+    const user = await findOrCreateOAuthUser({ provider: 'google', profile });
+    return done(null, user);
+  } catch (err) {
+    return done(err);
+  }
+}));
+```
+
+**When to use:** you need a one-off Google API call during login or want to avoid token storage altogether.
+
+---
+
+### Opt-in B — Long-lived Google API access (store refresh token)
+
+**In your strategy options (`config/passport-google-oauth20.js`)**, add `passReqToCallback: true`.
+
+**In your route (`routes/auth.js`)**, request a refresh token by adding `accessType: 'offline'` and `prompt: 'consent'` to the authenticate call:
+
+```js
+// routes/auth.js
+router.get('/auth/google', safePassportAuth('google', {
+  scope: ['email', 'profile'],
+  accessType: 'offline',
+  prompt: 'consent',
+}));
+```
+
+Update the verify callback to **store the refresh token** securely (encrypt at rest). You don't need the access token here:
+
+```js
+// config/passport-google-oauth20.js
+passport.use(new GoogleStrategy({
+  clientID: GOOGLE_CLIENT_ID,
+  clientSecret: GOOGLE_CLIENT_SECRET,
+  callbackURL: GOOGLE_CALLBACK_URL,
+  scope: ['profile', 'email'],
+  passReqToCallback: true,
+},
+// We store refreshToken; accessToken isn't needed here
+async (req, _accessToken, refreshToken, profile, done) => {
+  try {
+    const user = await findOrCreateOAuthUser({ provider: 'google', profile });
+
+    // 🔐 Persist refreshToken securely (encrypt at rest)
+    // await saveOAuthTokens({ userId: user.id, provider: 'google', refreshToken });
+
+    return done(null, user);
+  } catch (err) {
+    return done(err);
+  }
+}));
+```
+
+To exchange a stored refresh token for access tokens later, use `googleapis` or `google-auth-library` (e.g., create an `OAuth2Client` and call `refreshToken(refreshToken)`).
+
+**Security tips:**
+
+* Encrypt refresh tokens at rest and restrict access strictly.
+* Rotate credentials and support revocation.
+* Never log tokens.
+
+---
+
+## Test locally
+
+* Start the app, then visit:
+
+  ```
+  http://localhost:<%= port || '3000' %>/login
+  ```
+* Click **Continue with Google** and complete the consent.
+* You should land on `/` with your header showing you as logged in.
+
+---
+
+## Common issues
+
+* **Redirect URI mismatch:** Ensure `GOOGLE_CALLBACK_URL` matches the Cloud Console.
+* **No refresh token returned:** Add `accessType: 'offline'` (+ often `prompt: 'consent'`) to the `/auth/google` route.
+* **Consent screen not verified:** For External apps, add test users or publish the app.
+
+---
+
+## Security notes
+
+* Keep `GOOGLE_CLIENT_SECRET` out of version control.
+* Enforce HTTPS in production.
+* Limit scopes to what you need (email/profile only by default).

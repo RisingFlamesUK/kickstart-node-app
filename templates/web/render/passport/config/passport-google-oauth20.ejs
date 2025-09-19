@@ -1,14 +1,18 @@
-// config/passport-google-oauth20.js
+<%_ /* templates/web/render/passport/config/passport-google-oauth20.ejs */ _%>
+// This file is /config/passport-google-oauth20.js
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { findOrCreateOAuthUser } from './user-store.js';
 
 export default function configureGoogleStrategy() {
-  const { GOOGLE_CLIENT_ID = '', GOOGLE_CLIENT_SECRET = '', GOOGLE_CALLBACK_URL } = process.env;
+  const {
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GOOGLE_CALLBACK_URL,
+  } = process.env;
 
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    console.warn('[auth] Google OAuth not configured. Skipping.');
-    return;
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_CALLBACK_URL) {
+    return; // leave strategy unregistered if not configured
   }
 
   passport.use(
@@ -16,9 +20,14 @@ export default function configureGoogleStrategy() {
       {
         clientID: GOOGLE_CLIENT_ID,
         clientSecret: GOOGLE_CLIENT_SECRET,
-        callbackURL: GOOGLE_CALLBACK_URL || 'http://localhost:3000/auth/google/callback',
+        callbackURL: GOOGLE_CALLBACK_URL,
+        scope: ['profile', 'email'],
+        // Tip: add passReqToCallback: true when you want to use tokens in the verify callback.
+        // See docs/google-oauth.md → “Opt-in A/B” for patterns.
       },
-      async (accessToken, refreshToken, profile, done) => {
+      // Keep parameter order; prefix with "_" if you don't use them.
+      // See docs/google-oauth.md for details.
+      async (_accessToken, _refreshToken, profile, done) => {
         try {
           const user = await findOrCreateOAuthUser({ provider: 'google', profile });
           return done(null, user);

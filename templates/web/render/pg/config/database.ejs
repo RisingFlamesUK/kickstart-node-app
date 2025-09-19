@@ -1,9 +1,9 @@
 <%_ /* templates/web/render/pg/config/database.ejs */ _%>
-// This file is /utils/database.js
+// This file is /config/database.js
 import pg from 'pg';
 import dotenv from 'dotenv';
-<% if (useSession) { %>import session from 'express-session';
-import connectPgSimple from 'connect-pg-simple';<% } %>
+<%_ if (useSession) { _%>import session from 'express-session';
+import connectPgSimple from 'connect-pg-simple';<%_ } _%>
 
 dotenv.config();
 
@@ -11,17 +11,92 @@ const database = new pg.Pool({
   user: process.env.PG_USER,
   host: process.env.PG_HOST,
   database: process.env.PG_DB,
-  password: process.env.PG_PASS,
-  port: parseInt(process.env.PG_PORT),
+  password: process.env.PG_PASS ?? '',
+  port: parseInt(process.env.PG_PORT || '5432', 10),
+  connectionTimeoutMillis: 5000,   // ⬅️ quick fail if unreachable
+  idleTimeoutMillis: 30000,        // optional: tidy idle clients
 });
 
-database.on('error', (err, client) => {
-  console.error('Unexpected error on idle client', err);
-  process.exit(-1);
+database.on('error', (err) => {
+  // Idle client errors — keep brief but actionable.
+  console.error('❌ Postgres idle client error:', err?.message || err);
+  process.exit(1);
 });
 
-<% if (useSession) { %>const PGStore = connectPgSimple(session);
+function printFriendlyPgError(err) {
+  const host = process.env.PG_HOST || 'localhost';
+  const port = process.env.PG_PORT || '5432';
+  const db   = process.env.PG_DB || '(unset)';
+  const user = process.env.PG_USER || '(unset)';
+
+  switch (err?.code) {
+    case '28P01': // invalid_password
+      console.error(`\n❌ Database authentication failed for user "${user}". Check PG_USER/PG_PASS in .env and restart.\n`);
+      return;
+    case '3D000': // invalid_catalog_name
+      console.error(`\n❌ Database "${db}" does not exist on ${host}:${port}. Create it or update PG_DB in .env.\n`);
+      return;
+    case '57P03': // cannot_connect_now (server starting up)
+      console.error(`\n❌ Postgres is not ready yet at ${host}:${port}. Try again in a moment.\n`);
+      return;
+    case 'ECONNREFUSED':
+      console.error(`\n❌ Could not connect to Postgres at ${host}:${port}. Is it running? Check PG_HOST/PG_PORT.\n`);
+      return;
+    case 'ENOTFOUND':
+    case 'EAI_AGAIN':
+      console.error(`\n❌ Hostname "${host}" not resolved. Check PG_HOST (DNS/network).\n`);
+      return;
+    case 'ETIMEDOUT':
+      console.error(`\n❌ Timed out connecting to ${host}:${port}. Check network/firewall or increase connectionTimeoutMillis.\n`);
+      return;
+    default:
+      console.error(`\n❌ Postgres connection failed: ${err?.message || String(err)}\n`);
+  }
+}
+
+export async function verifyDatabaseConnection() {
+  try {
+    const client = await database.connect();
+    client.release();
+  } catch (err) {
+    printFriendlyPgError(err);
+    process.exit(1);
+  }
+}
+
+export function registerPoolShutdown() {
+  let closed = false;
+  const close = async (signal) => {
+    if (closed) return;
+    closed = true;
+    try {
+      await database.end();
+    } catch {}
+    // no process.exit() here; the signal will terminate the process anyway
+  };
+
+  process.once('SIGINT', close);
+  process.once('SIGTERM', close);
+  try { process.once('SIGUSR2', () => close('SIGUSR2')); } catch {}
+
+  // ❌ Do NOT use 'beforeExit' in long-running servers; it can fire during startup.
+  // process.on('beforeExit', close);
+}
+
+<%_ if (useSession) { _%>
+const PGStore = connectPgSimple(session);
+
+export function createSessionStore() {
+  return new PGStore({
+    pool: database,
+    tableName: 'session',
+    createTableIfMissing: true,
+  });
+}
+
 export { database, PGStore };
-export default database;<% } 
-
-else { %>export { database };<% } %>
+export default database;
+<%_ } else { _%>
+export { database };
+export default database;
+<%_ } _%>

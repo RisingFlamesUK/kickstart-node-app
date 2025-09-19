@@ -1,0 +1,340 @@
+<%_ /* templates/web/render/base/docs/architecture.md.ejs */ _%>
+# Kickstart Node — App Architecture & Auth Flows
+
+This document explains the architecture of **the generated app**. It shows how Express, sessions, Passport strategies, and (optionally) Bearer tokens fit together.
+
+---
+
+## 1) Components (big picture)
+
+```mermaid
+flowchart TD
+  linkStyle default interpolate basis
+
+  %% ───────── Client ─────────
+  subgraph Client["Browser / API Client"]
+    direction LR
+    U["User"]
+    B["Browser"]
+    CAPI["HTTP client (curl/axios)"]
+  end
+
+  %% ───────── App (pipeline + routers) ─────────
+  subgraph App["Express App"]
+    direction LR
+
+    IN((App entry))
+
+    subgraph Pipe["Middleware pipeline"]
+      direction TB
+      MW1["Body parser"]
+      MW2["Session (express-session + PG store)"]
+      MW3["Passport.initialize()"]
+      MW4["Passport.session()"]
+      MW5["Flash shim (req.flash + res.locals.flash)"]
+      MW6["View locals seeding (after session+passport)"]
+      IN --> MW1 --> MW2 --> MW3 --> MW4 --> MW5 --> MW6
+    end
+
+    subgraph Routes["Routers"]
+      direction LR
+      R["Auth Routes (/login, /register, /auth/*)"]
+      AR["API Router (/api/*)"]
+      V["Views (EJS)"]
+    end
+
+    MW6 --> R
+    MW6 --> AR
+    R -->|"render"| V
+    R --> PA
+  end
+
+  %% ───────── Passport ─────────
+  subgraph Passport["Passport"]
+    direction LR
+    PA["passport.authenticate()"]
+    S1["Local Strategy"]
+    S2["Google Strategy"]
+    S3["Microsoft Strategy"]
+    S4["Bearer Strategy (stateless)"]
+    SER["serializeUser / deserializeUser"]
+
+    PA --> S1
+    PA --> S2
+    PA --> S3
+    AR --> PA
+    PA --> S4
+
+    PA -- "success(user)" --> SER
+    SER -. "stores user id" .-> MW2
+    MW4 -. "deserializes" .-> SER
+  end
+
+  %% ───────── Persistence ─────────
+  subgraph Data["Persistence"]
+    direction LR
+    TBLU[["users table"]]
+    TBLT[["api_tokens table"]]
+    TBLS[["session table"]]
+    DB[("PostgreSQL")]
+    TBLS --- DB
+    TBLT --- DB
+    TBLU --- DB
+  end
+
+  S1 -.uses.-> TBLU
+  S2 -.uses.-> TBLU
+  S3 -.uses.-> TBLU
+  S4 -.uses.-> TBLT
+  MW2 <--> TBLS
+
+  U --> B
+  B -->|"GET / POST"| IN
+  CAPI -->|"Authorization: Bearer <token>"| IN
+
+%% ───────── Area backgrounds (4 distinct hues) ─────────
+style Client   fill:#3a1d0f,stroke:#f59e0b,color:#fff7ed,stroke-width:1.5px  %% warm/amber
+style App      fill:#0b1220,stroke:#94a3b8,color:#e5e7eb,stroke-width:1.5px  %% indigo
+style Pipe     fill:#15233c,stroke:#9fb2c9,color:#e5e7eb                    %% lighter indigo tint
+style Routes   fill:#1b2d4c,stroke:#9fb2c9,color:#e5e7eb                    %% another tint
+style Passport fill:#2a1640,stroke:#c084fc,color:#f5f3ff,stroke-width:1.5px  %% purple
+style Data     fill:#08321f,stroke:#34d399,color:#eafff7,stroke-width:1.5px  %% green
+
+%% ───────── Node styles ─────────
+classDef clientNode fill:#4b2712,stroke:#f59e0b,color:#fff7ed;
+classDef pipeNode   fill:#1a2a46,stroke:#7c8ea7,color:#e7eefc;
+classDef routeNode  fill:#223a61,stroke:#7c8ea7,color:#e7eefc;
+classDef strategy   fill:#3b245e,stroke:#c084fc,color:#fff;
+classDef serNode    fill:#2e2942,stroke:#a78bfa,color:#fff;
+classDef tableNode  fill:#0c4635,stroke:#34d399,color:#eafff7;
+classDef dbNode     fill:#083a4a,stroke:#67e8f9,color:#e0f2fe;
+
+%% Apply classes
+class U,B,CAPI clientNode;
+class IN,MW1,MW2,MW3,MW4,MW5,MW6 pipeNode;
+class AR,R,V routeNode;
+class PA,S1,S2,S3,S4 strategy;
+class SER serNode;
+class TBLS,TBLT,TBLU tableNode;
+class DB dbNode;
+
+```
+
+**Notes**
+
+- **Sessions** (if enabled) are backed by Postgres via `connect-pg-simple`.
+- **Local/Google/Microsoft** use **sessions**: after login, `serializeUser` stores a user id in the session; later `passport.session()` **deserializes** to `req.user`.
+- **Bearer** is **stateless**: API routes use `passport.authenticate('bearer', { session: false })`. Requests still pass through middleware, but no session data is written or read.
+- `routes/api.js` includes an example protected endpoint when Bearer is selected.
+
+---
+
+## 2) Local login — sequence
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant B as Browser
+  participant R as Express /auth routes
+  participant P as Passport Local
+  participant DB as Postgres (users)
+  participant S as Session Store (pg-simple)
+
+  U->>B: Open /login
+  B->>R: GET /login
+  R-->>B: 200 (form)
+  U->>B: Submit email+password
+  B->>R: POST /login
+  R->>P: passport.authenticate('local')
+  P->>DB: findUserByEmail(email)
+  DB-->>P: user row
+  P->>P: verifyPassword(bcrypt)
+  P-->>R: success(user) or fail
+  alt success
+    R->>S: serializeUser → store in session
+    S-->>R: session id stored
+    R-->>B: 302 → /
+    B->>R: GET /
+    R-->>B: 200 (req.user available)
+  else fail
+    R-->>B: 302 → /login (flash error)
+  end
+```
+
+**Files involved**
+
+* `config/passport-local.js`
+* `config/user-store.js`
+* `config/database.js`
+* `utils/security.js`
+* `routes/auth.js`
+* `app.js`
+
+---
+
+## 3) OAuth (Google / Microsoft) — sequence (Auth Code flow)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant B as Browser
+  participant R as Express /auth routes
+  participant G as Provider (Google/Microsoft)
+  participant P as Passport Strategy
+  participant DB as Postgres (users)
+  participant S as Session Store
+
+  U->>B: Click "Continue with Google/Microsoft"
+  B->>R: GET /auth/{provider}
+  R->>G: Redirect (client_id, scope, redirect_uri)
+  G-->>U: Consent screen
+  U-->>G: Approve
+  G->>R: Redirect back with code
+  R->>P: passport.authenticate('{provider}')
+  P->>G: Exchange code for profile
+  G-->>P: Profile (id, email,...)
+  P->>DB: findOrCreateOAuthUser(provider, profile)
+  DB-->>P: user row
+  P-->>R: success(user)
+  R->>S: serializeUser → store in session
+  R-->>B: 302 → /
+```
+
+**Files involved**
+
+* `config/passport-google-oauth20.js`
+* `config/passport-microsoft-oauth20.js`
+* `config/database.js`
+* `config/user-store.js`
+* `.env` provider keys
+
+---
+
+## 4) Bearer API — sequence
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as API Client
+  participant AR as Express /api/*
+  participant PB as Passport Bearer
+  participant TS as Token Store
+  participant DB as Postgres (api_tokens)
+
+  C->>AR: GET /api/me (Authorization: Bearer <token>)
+  AR->>PB: passport.authenticate('bearer', { session: false })
+  PB->>TS: verifyToken(token)
+  TS->>DB: lookup by hash & expiry
+  DB-->>TS: payload { userId, scopes }
+  TS-->>PB: valid payload or null
+  alt valid
+    PB-->>AR: req.user = { id, scopes }
+    AR->>AR: ensureScope('read:me')
+    AR-->>C: 200 JSON
+  else invalid
+    PB-->>AR: unauthorized
+    AR-->>C: 401
+  end
+```
+
+**Files involved**
+
+* `config/passport-bearer.js`
+* `config/database.js`
+* `utils/token-store.js`
+* `utils/ensure-scope.js`
+* `routes/api.js` (demo route)
+
+---
+
+## 5) Middleware order (`app.js`)
+
+```text
+express.urlencoded/json → static → view engine
+↓
+[session]
+↓
+[dev] session-check
+↓
+flash shim
+↓
+passport.initialize() → passport.session()
+↓
+view locals seeding (after session + passport)
+↓
+routes (auth routes, then API router)
+```
+
+---
+
+## 6) Data model (minimal)
+
+```sql
+-- users
+CREATE TABLE users (
+  id uuid PRIMARY KEY,
+  email text UNIQUE,
+  password_hash text,
+  provider text,
+  provider_id text,
+  display_name text,
+  created_at timestamptz default now()
+);
+
+-- sessions (created by connect-pg-simple)
+
+-- API tokens (hash-only; created lazily by utils/token-store.js)
+CREATE TABLE IF NOT EXISTS api_tokens (
+  token_hash text PRIMARY KEY,
+  user_id text NOT NULL,            -- string to allow UUID or other ids
+  scopes text,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS api_tokens_expires_at_idx ON api_tokens(expires_at);
+```
+
+---
+
+## 7) Optional: local → Bearer exchange
+
+You **may** expose an `/auth/token` route to exchange email+password for a short‑lived Bearer token. This is **not scaffolded** by default.
+
+```js
+// routes/token.js (example only)
+import express from 'express';
+import { findUserByEmail } from '../config/user-store.js';
+import { verifyPassword } from '../utils/security.js';
+import { issueToken } from '../utils/token-store.js';
+
+const router = express.Router();
+
+router.post('/auth/token', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'Missing creds' });
+
+  const user = await findUserByEmail(email);
+  if (!user) return res.status(401).json({ error: 'Invalid creds' });
+
+  const ok = await verifyPassword(password, user.password_hash);
+  if (!ok) return res.status(401).json({ error: 'Invalid creds' });
+
+  const token = await issueToken({ userId: user.id, scopes: ['read:me'] });
+  res.json({ token });
+});
+
+export default router;
+```
+
+---
+
+## 8) Security checklist
+
+* Set strong **SESSION\_SECRET** in production.
+* Use **HTTPS**; set `cookie.secure=true`.
+* Rotate OAuth creds; restrict callback URLs.
+* For Bearer: set **TOKEN\_HASH\_PEPPER**, short TTLs; never log raw tokens.
+* Validate & sanitize all input.
+* Apply rate limiting to auth endpoints.

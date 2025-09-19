@@ -1,3 +1,43 @@
 <%_ /* templates/web/render/passport/config/passport-microsoft-oauth20.ejs */ _%>
-// config/passport-microsoft-oauth20.js
-// TODO: Implement Microsoft authentication
+// This file is /config/passport-microsoft-oauth20.js
+import passport from 'passport';
+import { Strategy as MicrosoftStrategy } from 'passport-microsoft';
+import { findOrCreateOAuthUser } from './user-store.js';
+
+export default function configureMicrosoftStrategy() {
+  const {
+    MICROSOFT_CLIENT_ID,
+    MICROSOFT_CLIENT_SECRET,
+    MICROSOFT_CALLBACK_URL,
+    MICROSOFT_TENANT
+  } = process.env;
+
+  if (!MICROSOFT_CLIENT_ID || !MICROSOFT_CLIENT_SECRET || !MICROSOFT_CALLBACK_URL) {
+    return; // leave strategy unregistered if not configured
+  }
+
+  passport.use(
+    new MicrosoftStrategy(
+      {
+        clientID: MICROSOFT_CLIENT_ID,
+        clientSecret: MICROSOFT_CLIENT_SECRET,
+        callbackURL: MICROSOFT_CALLBACK_URL,
+        tenant: MICROSOFT_TENANT || 'common',
+        // Microsoft Graph scopes are PascalCase:
+        scope: ['User.Read'],
+        // Tip: add passReqToCallback: true when you want to use tokens in the verify callback.
+        // See docs/microsoft-oauth.md → “Opt-in A/B” for patterns.
+      },
+      // Keep parameter order; prefix with "_" if you don't use them.
+      // See docs/microsoft-oauth.md for details.
+      async (_accessToken, _refreshToken, profile, done) => {
+        try {
+          const user = await findOrCreateOAuthUser({ provider: 'microsoft', profile });
+          return done(null, user);
+        } catch (err) {
+          return done(err);
+        }
+      }
+    )
+  );
+}

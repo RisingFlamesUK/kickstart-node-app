@@ -1,0 +1,43 @@
+<%_ /* templates/web/render/passport/utils/ensure-auth.ejs */ _%>
+// This file is /utils/ensure-auth.js
+
+// Route guards for pages/APIs when Passport is enabled.
+/**
+* Gate for pages that require a logged-in user.
+* - For HTML requests: redirect to /login and remember the original URL.
+* - For JSON/API: respond 401/JSON.
+*/
+export function ensureAuthenticated(req, res, next) {
+    if (req.isAuthenticated && req.isAuthenticated()) return next();
+
+    // Remember where to return after login (HTML flows only)
+    if (req.accepts(['html', 'json']) === 'html') {
+        if (req.session) req.session.returnTo = req.originalUrl || req.url;
+        if (typeof req.flash === 'function') req.flash('error', 'Please sign in to continue');
+        return res.redirect('/login');
+    }
+
+    // JSON/API fallback
+    res.status(401).json({ error: 'unauthorized' });
+}
+
+/**
+* Opposite gate: keep logged-in users out of /login and /register.
+*/
+export function ensureUnauthenticated(req, res, next) {
+    if (req.isAuthenticated && req.isAuthenticated()) {
+        // Prefer returning to the last saved path, then home.
+        const to = (req.session && req.session.returnTo) || '/';
+        if (req.session) delete req.session.returnTo;
+        return res.redirect(to);
+    }
+    next();
+}
+
+/**
+* Convenience for APIs: 401 if not logged in (no redirects).
+*/
+export function requireAuthApi(req, res, next) {
+    if (req.isAuthenticated && req.isAuthenticated()) return next();
+    res.status(401).json({ error: 'unauthorized' });
+}

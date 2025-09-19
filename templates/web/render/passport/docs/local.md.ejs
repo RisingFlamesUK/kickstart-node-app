@@ -1,0 +1,69 @@
+<%_ /* templates/web/render/passport/docs/local.md.ejs */ _%>
+# Local Sessions — Quick Guide
+
+This project was generated with the **Local (email + password)** Passport strategy.
+
+---
+
+## How it works
+
+* Users register with email + password at `/register`.
+* Passwords are hashed with bcrypt and stored in `users.password_hash`.
+* Users log in at `/login`. On success, a session cookie is set.
+* `req.user` is available on subsequent requests.
+
+**Files:**
+
+* `config/passport-local.js` — strategy
+* `routes/auth.js` — register/login/logout routes
+* `config/user-store.js` — user CRUD
+* `utils/security.js` — bcrypt helpers
+
+---
+
+## Routes
+
+* `GET /login` — Login page
+* `POST /login` — Authenticate and start session
+* `GET /register` — Registration page (if scaffolded)
+* `POST /register` — Create user
+* `POST /logout` — Destroy session
+
+---
+
+## Environment
+
+```
+# Sessions
+# SESSION_SECRET=            # set in production; a strong random string
+```
+
+If left unset in development, a random secret is generated at runtime.
+
+---
+
+## Test locally
+
+* Start the app and visit:
+
+  ```
+  http://localhost:<%= port || '3000' %>/register
+  ```
+* Create an account, then log in at `/login`.
+
+---
+
+## Security notes
+
+* **Passwords:** Never store plaintext; bcrypt is already used.
+* **Rate limiting:** Add rate limiting to `/login` and `/register`.
+* **Validation:** Validate/sanitize user inputs server-side.
+* **Sessions:** Use HTTPS and set `cookie.secure=true` in production.
+* **CSRF:** Consider CSRF protection for state-changing form POSTs once you add more forms.
+
+---
+
+## Next steps
+
+* Add email verification / password reset flows.
+* Add account pages and profile editing.

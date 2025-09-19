@@ -1,0 +1,42 @@
+<%_ /* templates/web/render/axios/docs/axios.md.ejs */ _%>
+
+# Axios — Quick Guide
+
+This project includes **Axios** as an HTTP client (optional).
+
+---
+
+## Basic usage (server-side)
+
+```js
+import axios from 'axios';
+
+export async function getJoke(req, res, next) {
+  try {
+    const { data } = await axios.get('https://api.chucknorris.io/jokes/random');
+    res.json({ joke: data.value });
+  } catch (e) {
+    next(e);
+  }
+}
+```
+
+---
+
+## Basic usage (client-side)
+
+```html
+<script type="module">
+  import axios from 'https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js';
+  const { data } = await axios.get('/api/ping');
+  console.log(data);
+</script>
+```
+
+---
+
+## Tips
+
+* Set a baseURL and timeouts for production.
+* Handle errors centrally (interceptors) if you make many API calls.
+* For SSR-only apps, prefer server-side Axios.

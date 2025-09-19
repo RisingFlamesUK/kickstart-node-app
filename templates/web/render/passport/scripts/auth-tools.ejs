@@ -1,0 +1,117 @@
+<%_ /* templates/web/render/passport/scripts/auth-tools.ejs */ _%>
+// This file is /scripts/auth-tools.mjs
+
+// #!/usr/bin/env node
+/**
+ * scripts/auth-tools.mjs
+ *
+ * Helper CLI for user + bearer token management.
+ *
+ * Commands:
+ *   node scripts/auth-tools.mjs create-user --email you@example.com --password Secret123
+ *   node scripts/auth-tools.mjs issue-token  --email you@example.com --scopes read:me,write:things --ttl 3600
+ *   node scripts/auth-tools.mjs create-and-token --email you@example.com --password Secret123 --scopes read:me --ttl 3600
+ *
+ * Flags:
+ *   --email <string>       user email (required for create-user/create-and-token; optional for issue-token if --user-id provided)
+ *   --password <string>    plaintext password (create-user/create-and-token)
+ *   --user-id <uuid>       issue token for the given user id directly
+ *   --scopes <list>        comma/space separated, e.g. "read:me, write:things"
+ *   --ttl <seconds>        token TTL in seconds (default 3600)
+ */
+
+import { database } from '../config/database.js';
+import { initUserStore, createUser, findUserByEmail } from '../config/user-store.js';
+import { issueToken } from '../utils/token-store.js';
+
+function usage(code = 1) {
+  console.log(`\nUsage:\n  node scripts/auth-tools.mjs <command> [options]\n\nCommands:\n  create-user         Create a local user (email + password)\n  issue-token         Issue a bearer token for an existing user\n  create-and-token    Create a user (if needed) and issue a token\n\nOptions:\n  --email <email>       Email address\n  --password <pass>     Password for local user creation\n  --user-id <uuid>      Issue token directly for this user id\n  --scopes <list>       Comma/space separated scopes (e.g. \"read:me, write:things\")\n  --ttl <seconds>       Token TTL in seconds (default 3600)\n\nExamples:\n  node scripts/auth-tools.mjs create-user --email bob@example.com --password Secret123\n  node scripts/auth-tools.mjs issue-token --email bob@example.com --scopes read:me --ttl 7200\n  node scripts/auth-tools.mjs create-and-token --email bob@example.com --password Secret123 --scopes read:me\n`);
+  process.exit(code);
+}
+
+function parseArgs(argv) {
+  const out = { cmd: null, email: null, password: null, userId: null, scopes: [], ttl: 3600 };
+  const [cmd, ...rest] = argv;
+  out.cmd = cmd || null;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--email') out.email = String(rest[++i] || '');
+    else if (a === '--password') out.password = String(rest[++i] || '');
+    else if (a === '--user-id') out.userId = String(rest[++i] || '');
+    else if (a === '--scopes') out.scopes = normalizeScopes(rest[++i] || '');
+    else if (a === '--ttl') out.ttl = Math.max(1, parseInt(rest[++i] || '3600', 10) || 3600);
+    else if (a === '--help' || a === '-h') usage(0);
+  }
+  return out;
+}
+
+function normalizeScopes(s) {
+  if (!s) return [];
+  return String(s)
+    .split(/[ ,]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+async function cmdCreateUser({ email, password }) {
+  if (!email || !password) {
+    console.error('create-user: --email and --password are required');
+    usage(1);
+  }
+  await initUserStore();
+  const user = await createUser({ email, password });
+  console.log(JSON.stringify({ id: user.id, email: user.email }, null, 2));
+}
+
+async function resolveUserId({ email, userId }) {
+  if (userId) return userId;
+  if (!email) {
+    console.error('issue-token: provide --email or --user-id');
+    usage(1);
+  }
+  await initUserStore();
+  const u = await findUserByEmail(email);
+  if (!u) {
+    console.error(`No user found for ${email}`);
+    process.exit(1);
+  }
+  return u.id;
+}
+
+async function cmdIssueToken({ email, userId, scopes, ttl }) {
+  const uid = await resolveUserId({ email, userId });
+  const token = await issueToken({ userId: uid, scopes, ttlSec: ttl });
+  console.log(token);
+}
+
+async function cmdCreateAndToken({ email, password, scopes, ttl }) {
+  if (!email || !password) {
+    console.error('create-and-token: --email and --password are required');
+    usage(1);
+  }
+  await initUserStore();
+  let user = await findUserByEmail(email);
+  if (!user) user = await createUser({ email, password });
+  const token = await issueToken({ userId: user.id, scopes, ttlSec: ttl });
+  console.log(JSON.stringify({ id: user.id, email: user.email, token }, null, 2));
+}
+
+(async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  switch (args.cmd) {
+    case 'create-user':
+      await cmdCreateUser(args);
+      break;
+    case 'issue-token':
+      await cmdIssueToken(args);
+      break;
+    case 'create-and-token':
+      await cmdCreateAndToken(args);
+      break;
+    default:
+      usage(1);
+  }
+  // optional polite shutdown
+  try { await database?.end?.(); } catch {}
+  process.exit(0);
+})();

@@ -1,4 +1,5 @@
 <%_ /* templates/web/render/passport/views/register.ejs */ _%>
+<!-- This file is /views/register.ejs -->
 <%%- include('partials/header', { title: 'Register' }) %%>
 
 <div class="container" style="max-width: 560px; margin: 2rem auto;">
@@ -11,21 +12,54 @@
     <div style="color:#0366d6; margin:.75rem 0;"><%%= flash.info.join('<br>') %%></div>
   <%% } %%>
 
-  <form action="/register" method="post" style="display: grid; gap: .75rem;">
-    <label>
-      <div>Email</div>
-      <input type="email" name="email" required style="width:100%;padding:.5rem" />
-    </label>
-    <label>
-      <div>Password</div>
-      <input type="password" name="password" required style="width:100%;padding:.5rem" />
-    </label>
-    <label>
-      <div>Confirm Password</div>
-      <input type="password" name="confirmPassword" required style="width:100%;padding:.5rem" />
-    </label>
-    <button type="submit" style="padding:.6rem 1rem; cursor: pointer;">Register</button>
-  </form>
+  <section style="margin: 1.5rem 0;">
+    <h2 style="font-size: 1.15rem;">Sign up with email</h2>
+    <form action="/register" method="post" style="display: grid; gap: .75rem;">
+      <label>
+        <div>Email</div>
+        <input type="email" name="email" required style="width:100%;padding:.5rem" />
+      </label>
+      <label>
+        <div>Password</div>
+        <input type="password" name="password" required style="width:100%;padding:.5rem" />
+      </label>
+      <label>
+        <div>Confirm Password</div>
+        <input type="password" name="confirmPassword" required style="width:100%;padding:.5rem" />
+      </label>
+      <button type="submit" style="padding:.6rem 1rem; cursor: pointer;">Register</button>
+    </form>
+  </section>
+
+  <%% if (passportStrategies && passportStrategies.some(s => s !== 'local')) { %%>
+    <section style="margin: 1.5rem 0;">
+      <div style="border-top:1px solid #eee; margin: 1.25rem 0;"></div>
+      <h2 style="font-size: 1.15rem;">Or continue with</h2>
+      <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+        <%% if (passportStrategies.includes('google')) { %%>
+          <a href="/auth/google" style="padding:.6rem 1rem; border:1px solid #ddd; text-decoration:none;">Google</a>
+        <%% } %%>
+        <%% if (passportStrategies.includes('facebook')) { %%>
+          <a href="/auth/facebook" style="padding:.6rem 1rem; border:1px solid #ddd; text-decoration:none;">Facebook</a>
+        <%% } %%>
+        <%% if (passportStrategies.includes('twitter')) { %%>
+          <a href="/auth/twitter" style="padding:.6rem 1rem; border:1px solid #ddd; text-decoration:none;">Twitter</a>
+        <%% } %%>
+        <%% if (passportStrategies.includes('microsoft')) { %%>
+          <a href="/auth/microsoft" style="padding:.6rem 1rem; border:1px solid #ddd; text-decoration:none;">Microsoft</a>
+        <%% } %%>
+        <%% if (passportStrategies.includes('linkedin')) { %%>
+          <a href="/auth/linkedin" style="padding:.6rem 1rem; border:1px solid #ddd; text-decoration:none;">LinkedIn</a>
+        <%% } %%>
+        <%% if (passportStrategies.includes('steam')) { %%>
+          <a href="/auth/steam" style="padding:.6rem 1rem; border:1px solid #ddd; text-decoration:none;">Steam</a>
+        <%% } %%>
+        <%% if (passportStrategies.includes('amazon')) { %%>
+          <a href="/auth/amazon" style="padding:.6rem 1rem; border:1px solid #ddd; text-decoration:none;">Amazon</a>
+        <%% } %%>
+      </div>
+    </section>
+  <%% } %%>
 
   <p style="margin-top:1rem;">
     Already have an account? <a href="/login">Sign in</a>

@@ -1,0 +1,33 @@
+<%_ /* templates/web/render/passport/utils/security.ejs */ _%>
+// This file is /utils/security.js
+
+// Central security helpers: bcrypt for passwords; SHA-256 (+ optional pepper) for tokens.
+import bcrypt from 'bcrypt';
+import crypto from 'crypto';
+
+const PEPPER = process.env.TOKEN_HASH_PEPPER || '';
+
+// ---- Passwords (bcrypt) ----
+export async function hashPassword(plain, rounds = 10) {
+    const salt = await bcrypt.genSalt(rounds);
+    return bcrypt.hash(plain, salt);
+}
+
+export async function verifyPassword(plain, hashed) {
+    return bcrypt.compare(plain, hashed);
+}
+
+// ---- Tokens (SHA-256, fast) ----
+export function tokenHash(token) {
+    return crypto.createHash('sha256').update(String(token) + PEPPER, 'utf8').digest('hex');
+}
+
+export function timingSafeEqualStr(a, b) {
+    const ba = Buffer.from(String(a));
+    const bb = Buffer.from(String(b));
+    try {
+        return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+    } catch {
+        return false;
+    }
+}

@@ -1,156 +1,152 @@
 <%_ /* templates/web/render/base/app.ejs */ _%>
+// This file is /app.js
 import express from 'express';
 import dotenv from 'dotenv';
-<% if (usePg) { %>import { database<% if (useSession) { %>, PGStore<% } %> } from './config/database.js';<% } %>
-<% if (usePg && usePassport) { %>import { initUserStore } from './config/user-store.js';<% } %>
-<% if (useSession) { %>import session from 'express-session';<% } %>
-<% if (useSession && !usePassport) { %>import generateSecret from './utils/encryption-handler.js';<% } %>
-<% if (usePassport) { %>import passport from 'passport';
-<% } %>
+import validateEnv from './utils/validate-env.js';
+<%_ if (usePg) { _%>import { verifyDatabaseConnection, registerPoolShutdown <%_ if (useSession) { _%>, createSessionStore<%_ } _%>} from './config/database.js';<%_ } _%>
+<%_ if (usePg && usePassport) { _%>import { initUserStore } from './config/user-store.js';<%_ } _%>
+<%_ if (useSession) { _%>import session from 'express-session';<%_ } _%>
+<%_ if (useSession) { _%>import sessionCheck from './middleware/session-check.js';<%_ } _%>
+<%_ if (useSession && !usePassport) { _%>import generateSecret from './utils/encryption-handler.js';<%_ } _%>
+<%_ if (usePassport) { _%>import passport from 'passport';<%_ } _%>
+<%_ if (usePassport) { _%>import crypto from 'crypto';<%_ } _%>
+<%_ if (passportStrategies && passportStrategies.includes('bearer')) { _%>import apiRouter from "./routes/api.js";<%_ } _%>
 
-<% if (usePassport) { %>import crypto from 'crypto';<% } %>
-<% if (usePassport) { %>
+<%_ if (usePassport) { _%>
 // Strategy initializers (only import the ones you selected)
-<% if (passportStrategies && passportStrategies.includes('local')) { %>
+<%_ if (passportStrategies && passportStrategies.includes('local')) { _%>
 const configureLocal = (await import('./config/passport-local.js')).default;
-<% } %>
-<% if (passportStrategies && passportStrategies.includes('google')) { %>
+<%_ } _%>
+<%_ if (passportStrategies && passportStrategies.includes('bearer')) { _%>
+const configureBearer = (await import('./config/passport-bearer.js')).default;
+<%_ } _%>
+<%_ if (passportStrategies && passportStrategies.includes('google')) { _%>
 const configureGoogle = (await import('./config/passport-google-oauth20.js')).default;
-<% } %>
-<% /* Add other strategies as needed... */ %>
-<% } %>
+<%_ } _%>
+<%_ if (passportStrategies && passportStrategies.includes('microsoft')) { _%>
+const configureMicrosoft = (await import('./config/passport-microsoft-oauth20.js')).default;
+<%_ } _%>
+<%_ } _%>
 
 dotenv.config();
+validateEnv();
+<%_ if (usePg) { _%>
+await verifyDatabaseConnection();   // 👈 friendly, early failure (no stack dump)
+registerPoolShutdown();             // 👈 cleanly close the pool on SIGINT/SIGTERM/SIGUSR2
+<%_ } _%>
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Core middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static('public'));
 app.set('view engine', 'ejs');
-<%_ /* Seed safe view locals for all templates */ _%>
-app.use((req, res, next) => {
-  // whether auth was scaffolded in this project
-  res.locals.authEnabled = <%= usePassport ? 'true' : 'false' %>;
-  // which passport strategies were scaffolded (used at runtime by EJS)
-  res.locals.passportStrategies = <%- JSON.stringify(passportStrategies || []) %>;
-  // currently logged-in user (Passport sets req.user if authenticated)
-  res.locals.currentUser = req.user || null;
 
-  // make connect-flash messages available to views (if flash middleware is present)
-  res.locals.flash = typeof req.flash === 'function' ? req.flash() : {};
-  next();
-});
-
-<% if (useSession) { %>
+<%_ if (useSession) { _%>
 // ---- Session store ----
 const sessionSecret =
   process.env.SESSION_SECRET
-  <% if (usePassport) { %>|| crypto.randomBytes(24).toString('hex')<% } else { %>|| generateSecret()<% } %>;
+  <%_ if (usePassport) { _%>|| crypto.randomBytes(24).toString('hex')<%_ } else { _%>|| generateSecret()<%_ } _%>;
 
 app.use(
   session({
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
-    <% if (usePg) { %>
-    store: new PGStore({
-      pool: database,
-      tableName: 'session',
-      createTableIfMissing: true,
-    }),
-    <% } %>
+    <%_ if (usePg) { _%>store: createSessionStore(),<%_ } _%>
     cookie: { secure: false, path: '/', httpOnly: true }
   })
 );
 
+// Dev-only fail-fast guard: ensure req.session exists
+if (process.env.NODE_ENV !== 'production') {
+  app.use(sessionCheck);
+}
+
+// Simple flash shim...
 function flashShim(req, res, next) {
   if (!req.session) return next();
-
-  // Store flash messages in the session under _flash
   if (typeof req.flash !== 'function') {
     req.flash = function (type, msg) {
       req.session._flash = req.session._flash || {};
-      // Setter: req.flash('error', 'Bad credentials')
       if (type && typeof msg === 'string') {
         (req.session._flash[type] ||= []).push(msg);
         return;
       }
-      // Getter: req.flash('error') -> array
       if (type) {
         const arr = (req.session._flash?.[type]) || [];
-        delete req.session._flash?.[type];
+        if (req.session._flash) delete req.session._flash[type];
         return arr;
       }
-      // Getter (no type): drain all and return object
       const all = req.session._flash || {};
       req.session._flash = {};
       return all;
     };
   }
-
-  // Make flash available to views as an object (drains on read)
   res.locals.flash = function () {
     if (!req.session) return {};
     const all = req.session._flash || {};
     req.session._flash = {};
     return all;
   };
-
   next();
 }
-
 app.use(flashShim);
-<% } %>
+<%_ } _%>
 
-<% if (usePg && usePassport) { %>await initUserStore();<% } %>
+<%_ if (usePg && usePassport) { _%>
+// Pre-warm any tables/user store needed by auth
+await initUserStore();
+<%_ } _%>
 
-<% if (usePassport) { %>
+<%_ if (usePassport) { _%>
 // ---- Passport bootstrapping ----
-
 app.use(passport.initialize());
-<% if (useSession) { %>app.use(passport.session());<% } %>
+<%_ if (useSession) { _%>app.use(passport.session());<%_ } _%>
 
-// Minimal (de)serialization for demo purposes.
-// Replace with your user lookup/persistence logic.
-passport.serializeUser((user, done) => {
-  done(null, user);
-});
-passport.deserializeUser((obj, done) => {
-  done(null, obj);
-});
+passport.serializeUser((user, done) => { done(null, user); });
+passport.deserializeUser((obj, done) => { done(null, obj); });
 
-// Configure only the strategies you selected
-<% if (passportStrategies && passportStrategies.includes('local')) { %>configureLocal();<% } %>
-<% if (passportStrategies && passportStrategies.includes('google')) { %>configureGoogle();<% } %>
+<%_ if (passportStrategies && passportStrategies.includes('local')) { _%>configureLocal();<%_ } _%>
+<%_ if (passportStrategies && passportStrategies.includes('bearer')) { _%>configureBearer();<%_ } _%>
+<%_ if (passportStrategies && passportStrategies.includes('google')) { _%>configureGoogle();<%_ } _%>
+<%_ if (passportStrategies && passportStrategies.includes('microsoft')) { _%>configureMicrosoft();<%_ } _%>
+<%_ } _%>
 
-// Auth routes (generated dynamically for selected strategies)
-const authRoutes = (await import('./routes/auth.js')).default;
-app.use(authRoutes);
-
-// Expose auth state to views (only when Passport is enabled)
+// ---- Seed view locals once (after session & passport; BEFORE routes) ----
 app.use((req, res, next) => {
-  // whether auth was scaffolded in this project
-  res.locals.authEnabled = true;
-  // which passport strategies were scaffolded (used at runtime by EJS)
+  res.locals.authEnabled = <%= usePassport ? 'true' : 'false' %>;
   res.locals.passportStrategies = <%- JSON.stringify(passportStrategies || []) %>;
-  // currently logged-in user (Passport sets req.user if authenticated)
   res.locals.currentUser = req.user || null;
-
-  // expose flash messages collected by express-flash
-  // NOTE: we only *read* locals; routes may still call req.flash() to set messages.
-  res.locals.flash = res.locals.flash || res.locals.messages || {};
+  res.locals.flash = res.locals.flash || {};
   next();
 });
-<% } %>
+
+<%_ if (usePassport) { _%>
+const authRoutes = (await import('./routes/auth.js')).default;
+app.use(authRoutes);
+<%_ } _%>
+
+<%_ if (passportStrategies && passportStrategies.includes('bearer')) { _%>
+app.use(apiRouter);
+<%_ } _%>
 
 app.get('/', (req, res) => {
   res.render('index.ejs', { title: 'Welcome' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log("------------------------------------------------------");
   console.log(`|   🚀 Server running on http://localhost:${PORT}    |`);
   console.log("------------------------------------------------------");
 });
+
+// optional: graceful server shutdown
+function stopServer() {
+  try { server.close(() => {}); } catch {}
+}
+process.once('SIGINT',  stopServer);
+process.once('SIGTERM', stopServer);
+try { process.once('SIGUSR2', stopServer); } catch {}

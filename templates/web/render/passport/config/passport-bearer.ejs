@@ -1,3 +1,19 @@
 <%_ /* templates/web/render/passport/config/passport-bearer.ejs */ _%>
-// config/passport-bearer.js
-// TODO: Implement Bearer authentication
+// This file is /config/passport-bearer.js
+import passport from 'passport';
+import { Strategy as BearerStrategy } from 'passport-http-bearer';
+import { verifyToken } from '../utils/token-store.js';
+
+export default function configureBearer() {
+  passport.use(new BearerStrategy(async (token, done) => {
+    try {
+      const payload = await verifyToken(token);
+      if (!payload) return done(null, false);
+      // Attach a minimal user object; extend as needed
+      const user = { id: payload.userId, scopes: payload.scopes };
+      return done(null, user, { scope: payload.scopes?.join(' ') });
+    } catch (err) {
+      return done(err);
+    }
+  }));
+}

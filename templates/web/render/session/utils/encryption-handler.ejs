@@ -1,5 +1,10 @@
+<%_ /* templates/web/render/session/utils/encryption-handler.ejs */ _%>
 //This file is /utils/encryption-handler.js
 import crypto from "crypto";
+
+export function randomHex(bytes = 32) {
+  return crypto.randomBytes(bytes).toString('hex');
+}
 
 // Generate secret 
 export default function generateSecret() {

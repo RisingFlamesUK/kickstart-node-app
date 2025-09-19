@@ -1,0 +1,37 @@
+<%_ /* templates/web/render/passport/utils/ensure-scope.ejs */ _%>
+// This file is /utils/ensure-scope.js
+export function ensureScope(required) {
+  const requiredList = Array.isArray(required) ? required : [required];
+
+  return (req, res, next) => {
+    const raw = req.user?.scopes || [];
+    const scopes = new Set(Array.isArray(raw) ? raw.map(String) : []);
+    const ok = requiredList.every((s) => scopes.has(String(s)));
+
+    if (!ok) {
+      return res.status(403).json({
+        error: "insufficient_scope",
+        required: requiredList,
+        have: Array.from(scopes),
+      });
+    }
+    next();
+  };
+}
+
+// Optional helper: at least one scope from a set
+export function ensureAnyScope(candidates) {
+  const need = Array.isArray(candidates) ? candidates : [candidates];
+  return (req, res, next) => {
+    const scopes = new Set((req.user?.scopes || []).map(String));
+    const ok = need.some((s) => scopes.has(String(s)));
+    if (!ok) {
+      return res.status(403).json({
+        error: "insufficient_scope",
+        anyOf: need,
+        have: Array.from(scopes),
+      });
+    }
+    next();
+  };
+}

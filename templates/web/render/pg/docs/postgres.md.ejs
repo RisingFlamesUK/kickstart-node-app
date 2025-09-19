@@ -1,0 +1,48 @@
+<%_ /* templates/web/render/pg/docs/postgres.md.ejs */ _%>
+# PostgreSQL — Quick Guide
+
+This project was generated with **PostgreSQL** support.
+
+---
+
+## Configure `.env`
+
+```ini
+PG_USER=<user>
+PG_PASS=<password>
+PG_DB=<%= (appName || 'my_app').replace(/[^a-zA-Z0-9_\-]/g,'_').toLowerCase() %>
+PG_PORT=5432
+PG_HOST=localhost
+```
+
+---
+
+## What gets created
+
+* A pooled client in `config/database.js`.
+* If **sessions** are enabled, `connect-pg-simple` creates the `session` table automatically on first run.
+* If **bearer** is enabled, `utils/token-store.js` creates `api_tokens` on first use.
+
+---
+
+## Create DB locally
+
+```bash
+# psql example (adjust to your environment)
+createdb <%= (appName || 'my_app').replace(/[^a-zA-Z0-9_\-]/g,'_').toLowerCase() %>
+```
+
+---
+
+## Test connectivity
+
+```js
+// quick test: node -e "(async()=>{const {database}=await import('./config/database.js'); const r=await database.query('select 1'); console.log(r.rows[0]); process.exit(0)})()"
+```
+
+---
+
+## Notes
+
+* Use migrations (e.g., Knex, Prisma, Postgrator) for real projects.
+* Never commit credentials. Prefer separate `.env` per environment.

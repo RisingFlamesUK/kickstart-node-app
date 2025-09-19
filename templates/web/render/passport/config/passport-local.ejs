@@ -1,9 +1,9 @@
-<%_ /* this file is templates/web/render/passport/config/passport-local.ejs */ _%>
-// config/passport-local.js
+<%_ /* templates/web/render/passport/config/passport-local.ejs */ _%>
+// This file is /config/passport-local.js
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 import { findUserByEmail } from './user-store.js';
-import bcrypt from 'bcrypt';
+import { verifyPassword } from '../utils/security.js';
 
 export default function configureLocal() {
   passport.use(
@@ -14,7 +14,7 @@ export default function configureLocal() {
           const user = await findUserByEmail(email);
           if (!user) return done(null, false, { message: 'No such user' });
 
-          const ok = await bcrypt.compare(password, user.password_hash);
+          const ok = await verifyPassword(password, user.password_hash);
           if (!ok) return done(null, false, { message: 'Invalid password' });
 
           return done(null, { id: user.id, email: user.email });
